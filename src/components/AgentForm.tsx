@@ -1,12 +1,22 @@
-import { IconFileText, IconHeartbeat, IconIdBadge2, IconPlayerPause, IconPlayerPlay, IconPlug, IconTrash } from '@tabler/icons-react'
+import {
+  IconBook2,
+  IconFileText,
+  IconHeartbeat,
+  IconIdBadge2,
+  IconPlayerPause,
+  IconPlayerPlay,
+  IconPlug,
+  IconTrash,
+} from '@tabler/icons-react'
 import { isLocalAdapter } from '../adapters'
-import { descendantIds, isAbsolutePath, WORKSPACE_BASE } from '../store'
-import type { Agent } from '../types'
+import { descendantIds, isAbsolutePath } from '../store'
+import type { Agent, Skill } from '../types'
 import { AdapterSettings, Field, type ClaudeCheck } from './AdapterSettings'
 import { STATUS_LABEL } from './AgentList'
 
 type Props = {
   agents: Agent[]
+  skills: Skill[]
   draft: Agent
   dirty: boolean
   onChange: (next: Agent) => void
@@ -15,10 +25,9 @@ type Props = {
   onDelete: () => void
   claudeCheck: ClaudeCheck
   onRecheckClaude: () => void
-  children?: React.ReactNode
 }
 
-export function AgentForm({ agents, draft, dirty, onChange, onSave, onCancel, onDelete, claudeCheck, onRecheckClaude, children }: Props) {
+export function AgentForm({ agents, skills, draft, dirty, onChange, onSave, onCancel, onDelete, claudeCheck, onRecheckClaude }: Props) {
   const set = <K extends keyof Agent>(key: K, value: Agent[K]) => onChange({ ...draft, [key]: value })
   const blocked = descendantIds(agents, draft.id)
   const managerOptions = agents.filter((a) => !blocked.has(a.id))
@@ -27,6 +36,10 @@ export function AgentForm({ agents, draft, dirty, onChange, onSave, onCancel, on
   const paused = draft.status === 'paused'
   const nameError = draft.name.trim() === ''
   const workdirError = !isAbsolutePath(draft.workdir.trim())
+  const bypass = draft.adapter.type === 'claude-code' && draft.adapter.permissionMode === 'bypassPermissions'
+  const skillIds = draft.skillIds ?? []
+  const toggleSkill = (id: string) =>
+    set('skillIds', skillIds.includes(id) ? skillIds.filter((s) => s !== id) : [...skillIds, id])
 
   return (
     <section className="detail">
@@ -80,7 +93,7 @@ export function AgentForm({ agents, draft, dirty, onChange, onSave, onCancel, on
             <input
               className="mono"
               value={draft.workdir}
-              placeholder={WORKSPACE_BASE}
+              placeholder="C:\Users\..."
               aria-invalid={workdirError}
               onChange={(e) => set('workdir', e.target.value)}
             />
@@ -122,8 +135,59 @@ export function AgentForm({ agents, draft, dirty, onChange, onSave, onCancel, on
 
       <div className="section">
         <h2>
+          <IconBook2 size={16} aria-hidden /> 스킬
+        </h2>
+        {skills.length === 0 ? (
+          <p className="muted">스킬 메뉴에서 스킬을 만들면 여기서 고를 수 있습니다.</p>
+        ) : (
+          <div className="check-list">
+            {skills.map((skill) => (
+              <label key={skill.id} className="check">
+                <input type="checkbox" checked={skillIds.includes(skill.id)} onChange={() => toggleSkill(skill.id)} />
+                <span>
+                  {skill.name || '이름 없는 스킬'}
+                  {skill.description && <span className="muted"> · {skill.description}</span>}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="section">
+        <h2>
           <IconHeartbeat size={16} aria-hidden /> 하트비트와 예산
         </h2>
+        <div className="check-list">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={!!draft.heartbeatEnabled}
+              onChange={(e) => set('heartbeatEnabled', e.target.checked)}
+            />
+            <span>
+              자동 실행
+              <span className="muted"> · 실행 주기마다 나에게 배정된 할 일 중 가장 급한 것을 가져가 실행합니다</span>
+            </span>
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={!!draft.requireApproval || bypass}
+              disabled={bypass}
+              onChange={(e) => set('requireApproval', e.target.checked)}
+            />
+            <span>
+              자동 실행 전에 승인 받기
+              <span className="muted">
+                {bypass ? ' · 모든 권한을 우회하는 모드라 항상 승인을 받습니다' : ' · 승인 메뉴에서 승인해야 실행됩니다'}
+              </span>
+            </span>
+          </label>
+        </div>
+        {draft.lastHeartbeatAt && (
+          <p className="muted">마지막 하트비트: {new Date(draft.lastHeartbeatAt).toLocaleString('ko-KR')}</p>
+        )}
         <div className="grid-2">
           <Field label={`실행 주기 ${draft.heartbeatMinutes}분`}>
             <input
@@ -170,7 +234,6 @@ export function AgentForm({ agents, draft, dirty, onChange, onSave, onCancel, on
           저장
         </button>
       </footer>
-      {children}
     </section>
   )
 }

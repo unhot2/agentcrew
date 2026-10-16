@@ -1,36 +1,13 @@
 import { defaultAdapterConfig } from './adapters'
 import type { Agent } from './types'
 
-const STORAGE_KEY = 'agentcrew.agents.v4'
-
-/** 에이전트 작업 디렉터리 기본값 */
-export const WORKSPACE_BASE = 'C:\\Users\\unhot\\Desktop\\workspace'
-
 /** Windows 드라이브 경로(C:\...), UNC 경로(\\server\...), POSIX 절대 경로(/...)만 허용 */
 export function isAbsolutePath(path: string) {
   return /^[A-Za-z]:[\\/]/.test(path) || /^\\\\[^\\]+\\/.test(path) || path.startsWith('/')
 }
 
-
-export function loadAgents(): Agent[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw) as Agent[]
-  } catch {
-    // 저장소를 못 읽으면 빈 목록으로 시작
-  }
-  return []
-}
-
-export function saveAgents(agents: Agent[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(agents))
-  } catch {
-    // 저장 실패는 무시 (시크릿 모드 등)
-  }
-}
-
-export function createAgent(): Agent {
+/** workspaceBase: 설정의 작업 디렉터리 기본값 */
+export function createAgent(workspaceBase: string): Agent {
   const id = crypto.randomUUID()
   return {
     id,
@@ -39,10 +16,13 @@ export function createAgent(): Agent {
     description: '',
     reportsTo: null,
     status: 'idle',
-    workdir: WORKSPACE_BASE,
+    workdir: workspaceBase,
     adapter: defaultAdapterConfig('claude-code'),
     instructions: '',
     heartbeatMinutes: 30,
+    heartbeatEnabled: false,
+    requireApproval: false,
+    skillIds: [],
     monthlyBudget: 50,
     spentThisMonth: 0,
   }

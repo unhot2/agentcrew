@@ -1,0 +1,207 @@
+import { randomUUID } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
+import type { Agent, Task, TaskPriority } from '../src/types.ts'
+import { taskKey } from '../src/taskStore.ts'
+import { log, persist, state } from './db.ts'
+import { notify } from './notify.ts'
+
+/** 에이전트 도구(MCP 서버)가 부를 서버 주소. 서버가 뜰 때 정한다 */
+let apiUrl = 'http://127.0.0.1:5180'
+
+export function setApiUrl(url: string) {
+  apiUrl = url
+}
+
+type Grant = { runId: string; agentId: string; taskId: string }
+
+/** 실행 중에만 유효한 토큰. 에이전트는 이 토큰으로 자기 팀에만 일을 맡길 수 있다 */
+const grants = new Map<string, Grant>()
+
+export function issueGrant(grant: Grant) {
+  const token = randomUUID()
+  grants.set(token, grant)
+  return { token, apiUrl }
+}
+
+export function revokeGrant(token: string) {
+  grants.delete(token)
+}
+
+/** 에이전트 아래에 있는 모든 에이전트 (직속 + 그 아래) */
+export function descendantsOf(agentId: string): Agent[] {
+  const out: Agent[] = []
+  const queue = [agentId]
+  while (queue.length) {
+    const id = queue.shift()!
+    for (const a of state.agents) {
+      if (a.reportsTo === id && !out.includes(a)) {
+        out.push(a)
+        queue.push(a.id)
+      }
+    }
+  }
+  return out
+}
+
+export function hasTeam(agentId: string) {
+  return state.agents.some((a) => a.reportsTo === agentId)
+}
+
+/** 에이전트에게 주는 위임 도구 (OpenAI 함수 호출 형식, MCP 서버도 이 정의를 그대로 쓴다) */
+export const DELEGATION_TOOLS = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'list_team',
+      description: '나에게 보고하는 하위 에이전트 목록과 역할, 지금 맡은 일의 수를 본다.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'create_task',
+      description:
+        '하위 에이전트에게 작업을 맡긴다. 지금 작업의 하위 작업으로 만들어지고, 담당 에이전트가 자기 차례에 실행한다.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '작업 제목' },
+          description: { type: 'string', description: '무엇을 어떻게 할지, 완료 기준까지 자세히' },
+          assignee_id: { type: 'string', description: 'list_team으로 확인한 하위 에이전트 id' },
+          priority: { type: 'string', enum: ['urgent', 'high', 'medium', 'low'] },
+        },
+        required: ['title', 'description', 'assignee_id'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'list_subtasks',
+      description: '지금 작업에서 맡긴 하위 작업들의 상태와 마지막 실행 결과를 본다.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+]
+
+export const DELEGATION_TOOL_NAMES = DELEGATION_TOOLS.map((t) => t.function.name)
+
+const PRIORITIES = new Set<TaskPriority>(['urgent', 'high', 'medium', 'low'])
+
+function openCount(agentId: string) {
+  return state.tasks.filter(
+    (t) => t.assigneeId === agentId && (t.status === 'todo' || t.status === 'in_progress' || t.status === 'in_review'),
+  ).length
+}
+
+function lastResult(task: Task) {
+  const events = task.runs[task.runs.length - 1]?.events ?? []
+  const result = [...events].reverse().find((e) => e.kind === 'result')
+  return result && result.kind === 'result' ? result.text.slice(0, 600) : ''
+}
+
+/** 위임 도구 실행. 토큰으로 누가 어떤 작업에서 부르는지 확인한다 */
+export async function callDelegationTool(
+  token: string,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ text: string; isError: boolean }> {
+  const grant = grants.get(token)
+  if (!grant) return { text: '이 실행의 권한이 끝났습니다.', isError: true }
+  const agent = state.agents.find((a) => a.id === grant.agentId)
+  const parent = state.tasks.find((t) => t.id === grant.taskId)
+  if (!agent || !parent) return { text: '에이전트나 작업을 찾을 수 없습니다.', isError: true }
+  const team = descendantsOf(agent.id)
+
+  if (name === 'list_team') {
+    if (team.length === 0) return { text: '하위 에이전트가 없습니다.', isError: false }
+    const lines = team.map((a) => {
+      const boss = a.reportsTo === agent.id ? '직속' : `${state.agents.find((x) => x.id === a.reportsTo)?.name ?? ''} 아래`
+      const auto = a.heartbeatEnabled ? '자동 실행 켜짐' : '자동 실행 꺼짐(사람이 실행해야 함)'
+      return `- id: ${a.id} | ${a.name} (${a.title || '직책 없음'}, ${boss}) | ${a.description || '설명 없음'} | 맡은 일 ${openCount(a.id)}개 | ${auto}`
+    })
+    return { text: lines.join('\n'), isError: false }
+  }
+
+  if (name === 'create_task') {
+    const title = String(args.title ?? '').trim()
+    const description = String(args.description ?? '').trim()
+    const assignee = team.find((a) => a.id === String(args.assignee_id ?? ''))
+    if (!title) return { text: '제목이 필요합니다.', isError: true }
+    if (!assignee) return { text: '하위 에이전트에게만 맡길 수 있습니다. list_team으로 id를 확인하세요.', isError: true }
+    const priority = PRIORITIES.has(args.priority as TaskPriority) ? (args.priority as TaskPriority) : parent.priority
+    const now = new Date().toISOString()
+    const task: Task = {
+      id: randomUUID(),
+      number: Math.max(0, ...state.tasks.map((t) => t.number)) + 1,
+      title,
+      description,
+      status: 'todo',
+      priority,
+      assigneeId: assignee.id,
+      projectId: parent.projectId ?? null,
+      parentTaskId: parent.id,
+      createdAt: now,
+      updatedAt: now,
+      runs: [],
+    }
+    state.tasks.unshift(task)
+    // 담당 에이전트가 다음 하트비트를 기다리지 않고 곧 일을 시작하게 한다
+    if (assignee.heartbeatEnabled) assignee.lastHeartbeatAt = undefined
+    log('task', `${agent.name}가 ${taskKey(parent)}에서 ${assignee.name}에게 ${taskKey(task)} ${title}을 맡겼습니다.`, {
+      taskId: task.id,
+      agentId: assignee.id,
+    })
+    notify('task.delegated', `${agent.name} → ${assignee.name}: ${taskKey(task)} ${title}`, { taskId: task.id })
+    persist()
+    const when = assignee.heartbeatEnabled ? '곧 실행됩니다' : '자동 실행이 꺼져 있어 사람이 실행해야 합니다'
+    return { text: `${taskKey(task)}을 ${assignee.name}에게 맡겼습니다 (${when}). id: ${task.id}`, isError: false }
+  }
+
+  if (name === 'list_subtasks') {
+    const children = state.tasks.filter((t) => t.parentTaskId === parent.id)
+    if (children.length === 0) return { text: '아직 맡긴 하위 작업이 없습니다.', isError: false }
+    const lines = children.map((t) => {
+      const who = state.agents.find((a) => a.id === t.assigneeId)?.name ?? '담당 없음'
+      const result = lastResult(t)
+      return `- ${taskKey(t)} ${t.title} | ${who} | 상태: ${t.status}${result ? `\n  마지막 결과: ${result}` : ''}`
+    })
+    return { text: lines.join('\n'), isError: false }
+  }
+
+  return { text: `알 수 없는 도구: ${name}`, isError: true }
+}
+
+/** 하위 작업이 모두 끝나면 상위 작업을 검토 대기로 올려 사람이 결과를 확인하게 한다 */
+export function checkParentDone(task: Task) {
+  if (!task.parentTaskId) return
+  const parent = state.tasks.find((t) => t.id === task.parentTaskId)
+  if (!parent || parent.status === 'done' || parent.status === 'cancelled') return
+  const children = state.tasks.filter((t) => t.parentTaskId === parent.id)
+  if (!children.every((t) => t.status === 'done' || t.status === 'cancelled')) return
+  parent.status = 'in_review'
+  parent.updatedAt = new Date().toISOString()
+  log('task', `${taskKey(parent)}의 하위 작업이 모두 끝났습니다. 결과를 검토하세요.`, { taskId: parent.id })
+  notify('task.subtasks_done', `${taskKey(parent)} ${parent.title}: 하위 작업 완료`, { taskId: parent.id })
+}
+
+const MCP_SERVER = fileURLToPath(new URL('./mcp-agentcrew.mjs', import.meta.url))
+
+/** Claude Code, Codex에 붙일 MCP 서버 실행 정보 */
+export function mcpServerSpec(d: { token: string; apiUrl: string }) {
+  return {
+    command: process.execPath,
+    args: [MCP_SERVER],
+    env: { AGENTCREW_URL: d.apiUrl, AGENTCREW_TOKEN: d.token },
+  }
+}
+
+/** 하위 에이전트가 있는 에이전트에게 덧붙이는 안내 */
+export const DELEGATION_GUIDE = `## 팀에 일 맡기기
+당신에게는 하위 에이전트가 있습니다. agentcrew 도구를 쓸 수 있습니다.
+- list_team: 하위 에이전트와 역할을 확인합니다.
+- create_task: 하위 에이전트에게 일을 맡깁니다. 제목, 자세한 설명(완료 기준 포함), 담당 id를 넣습니다.
+- list_subtasks: 이 작업에서 맡긴 일의 진행 상황과 결과를 봅니다.
+하위 에이전트의 역할에 맞는 일은 직접 하지 말고 나눠서 맡기세요. 맡긴 일은 각 에이전트가 자기 차례에 실행합니다.
+일을 맡긴 뒤에는 기다리지 말고, 누구에게 무엇을 맡겼는지 요약하고 끝내세요.`
