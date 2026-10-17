@@ -3,6 +3,7 @@ import { PRIORITY_LABEL, PRIORITY_ORDER, STATUS_LABEL, STATUS_ORDER, taskKey } f
 import type { Agent, Project, Task, TaskPriority, TaskStatus } from '../types'
 import { Field } from './AdapterSettings'
 import { RUN_STATUS_TEXT, RunLog } from './RunLog'
+import { TaskReport } from './TaskReport'
 
 type Props = {
   task: Task
@@ -133,6 +134,17 @@ export function TaskDetail({ task, tasks, agents, projects, blockedReason, runEr
           </button>
         </div>
       )}
+
+      <TaskReport
+        task={task}
+        parent={parent}
+        children={children}
+        agents={agents}
+        // 결재하면 작업을 완료로, 결재를 취소하면 다시 검토 대기로 돌린다
+        onSign={(signedAt) =>
+          onChange(signedAt ? { reportSignedAt: signedAt, status: 'done' } : { reportSignedAt: null, status: task.status === 'done' ? 'in_review' : task.status })
+        }
+      />
 
       {children.length > 0 && (
         <div className="section">

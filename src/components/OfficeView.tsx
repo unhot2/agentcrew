@@ -50,7 +50,7 @@ const same = (a: Point | null, b: Point | null) => !!a && !!b && a.x === b.x && 
 const randomSpot = (spots: Point[]) => spots[Math.floor(Math.random() * spots.length)]
 
 /** CEO방을 쓰는 사람: 보고 대상이 없는 최상위 에이전트. 여럿이면 직책에 CEO가 들어간 사람을 고른다 */
-function ceoOf(agents: Agent[]) {
+export function ceoOf(agents: Agent[]) {
   const ids = new Set(agents.map((a) => a.id))
   const top = agents.filter((a) => !a.reportsTo || !ids.has(a.reportsTo))
   return top.find((a) => /ceo/i.test(a.title)) ?? top[0] ?? null

@@ -12,6 +12,7 @@ import type {
   Skill,
   Task,
   TaskRun,
+  RunSource,
 } from '../src/types.ts'
 import type { RunEvent } from '../src/runTypes.ts'
 import { setTaskPrefix, taskKey, taskPrompt } from '../src/taskStore.ts'
@@ -61,7 +62,7 @@ const AGENT_FIELDS: (keyof Agent)[] = [
   'skillIds',
   'monthlyBudget',
 ]
-const TASK_FIELDS: (keyof Task)[] = ['title', 'description', 'status', 'priority', 'assigneeId', 'projectId', 'noDelegation']
+const TASK_FIELDS: (keyof Task)[] = ['title', 'description', 'status', 'priority', 'assigneeId', 'projectId', 'noDelegation', 'reportSignedAt']
 const PROJECT_FIELDS: (keyof Project)[] = ['name', 'description', 'status', 'color', 'leadAgentId', 'goalId', 'workdir']
 const GOAL_FIELDS: (keyof Goal)[] = ['title', 'description', 'status', 'targetDate']
 const ROUTINE_FIELDS: (keyof Routine)[] = [
@@ -337,7 +338,7 @@ export function artifactContent(id: string) {
 
 // ---------- 실행, 승인 ----------
 
-export type RunSource = 'manual' | 'heartbeat' | 'routine' | 'approval' | 'subtasks'
+export type { RunSource }
 
 const SOURCE_LABEL: Record<RunSource, string> = {
   manual: '직접 실행',
@@ -413,6 +414,7 @@ export function runTask(taskId: string, source: RunSource = 'manual', followUp?:
   const taskRun: TaskRun = {
     id: '',
     agentId: agent.id,
+    source,
     startedAt: now(),
     status: 'running',
     costUsd: 0,

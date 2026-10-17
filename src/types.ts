@@ -62,9 +62,14 @@ export type Agent = {
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done' | 'cancelled'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
+/** 실행을 시작한 계기. subtasks는 하위 작업이 모두 끝난 뒤 상위 담당자가 결과를 정리해 보고하는 실행 */
+export type RunSource = 'manual' | 'heartbeat' | 'routine' | 'approval' | 'subtasks'
+
 export type TaskRun = {
   id: string
   agentId: string
+  /** 예전 실행 기록에는 없을 수 있다 */
+  source?: RunSource
   startedAt: string
   status: RunStatus
   costUsd: number
@@ -85,6 +90,8 @@ export type Task = {
   parentTaskId?: string | null
   /** 켜면 담당 에이전트에게 위임 도구를 주지 않아 직접 하게 한다 */
   noDelegation?: boolean
+  /** 대표가 최종 보고서에 결재한 시각 */
+  reportSignedAt?: string | null
   createdAt: string
   updatedAt: string
   runs: TaskRun[]
