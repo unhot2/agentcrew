@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'n
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import type { Agent, LocalModelConfig } from '../../src/types.ts'
 import type { AdapterStatus } from '../../src/runTypes.ts'
-import { DELEGATION_TOOLS, callDelegationTool } from '../delegation.ts'
+import { agentTools, callAgentTool } from '../delegation.ts'
 import { summarize, type AdapterContext, type AdapterHandle } from '../runner.ts'
 
 const MAX_TURNS = 15
@@ -93,7 +93,7 @@ function inside(workdir: string, path: string) {
 export function startLocalModel(agent: Agent, ctx: AdapterContext): AdapterHandle {
   const config = agent.adapter as LocalModelConfig
   const abort = new AbortController()
-  const tools = [...FILE_TOOLS, ...(ctx.delegation ? DELEGATION_TOOLS : [])]
+  const tools = [...FILE_TOOLS, ...(ctx.agentTools ? agentTools(ctx.agentTools.token) : [])]
   const messages: Message[] = [
     {
       role: 'system',
@@ -133,7 +133,7 @@ export function startLocalModel(agent: Agent, ctx: AdapterContext): AdapterHandl
         writeFileSync(file, args.content ?? '')
         return { text: `${args.path}에 저장했습니다.`, isError: false, path: file }
       }
-      if (ctx.delegation) return await callDelegationTool(ctx.delegation.token, name, args)
+      if (ctx.agentTools) return await callAgentTool(ctx.agentTools.token, name, args)
       return { text: `알 수 없는 도구: ${name}`, isError: true }
     } catch (err) {
       return { text: (err as Error).message, isError: true }

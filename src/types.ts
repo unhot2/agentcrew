@@ -143,12 +143,17 @@ export type Approval = {
   id: string
   taskId: string
   agentId: string
+  /** 승인이 필요한 이유. 에이전트가 올린 요청이면 무엇을 승인받는지 한 줄 */
   reason: string
-  /** 누가 실행을 요청했는지 */
-  source: 'heartbeat' | 'routine'
+  /** 에이전트가 올린 요청의 자세한 내용 */
+  details?: string
+  /** 누가 요청했는지. heartbeat, routine은 실행 전 승인, agent는 에이전트가 작업 중에 올린 승인 */
+  source: 'heartbeat' | 'routine' | 'agent'
   status: ApprovalStatus
   requestedAt: string
   decidedAt: string | null
+  /** 승인하거나 거절할 때 남긴 코멘트. 에이전트에게 그대로 전달한다 */
+  comment?: string
 }
 
 export type ActivityEntry = {

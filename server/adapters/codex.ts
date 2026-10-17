@@ -52,8 +52,8 @@ export function startCodex(agent: Agent, ctx: AdapterContext): AdapterHandle {
   const config = agent.adapter as CodexConfig
   const args = ['exec', '--json', '--skip-git-repo-check', '-s', config.sandbox, '-C', agent.workdir]
   if (config.model) args.push('-m', config.model)
-  if (ctx.delegation) {
-    const spec = mcpServerSpec(ctx.delegation)
+  if (ctx.agentTools) {
+    const spec = mcpServerSpec(ctx.agentTools)
     const env = Object.entries(spec.env)
       .map(([k, v]) => `${k}=${toml(v)}`)
       .join(', ')

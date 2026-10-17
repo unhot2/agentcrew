@@ -140,8 +140,8 @@ export const api = {
     return request<TaskRun>('POST', `/api/tasks/${id}/run`, {})
   },
   stopRun: (runId: string) => track(`runs:${runId}`, request('POST', `/api/runs/${runId}/stop`)),
-  decide: (id: string, decision: 'approved' | 'rejected') =>
-    request<{ approval: Approval; error: string | null }>('POST', `/api/approvals/${id}/decide`, { decision }),
+  decide: (id: string, decision: 'approved' | 'rejected', comment = '') =>
+    request<{ approval: Approval; error: string | null }>('POST', `/api/approvals/${id}/decide`, { decision, comment }),
   testConnector: (id: string) => request<{ message: string }>('POST', `/api/connectors/${id}/test`, {}),
   artifactContent: (id: string) =>
     request<{ exists: boolean; size: number; content: string; truncated: boolean }>('GET', `/api/artifacts/${id}/content`),

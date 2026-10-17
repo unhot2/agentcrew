@@ -179,10 +179,10 @@ function Workspace({ initial }: { initial: ServerState }) {
     }
   }
 
-  const decide = async (id: string, decision: 'approved' | 'rejected') => {
+  const decide = async (id: string, decision: 'approved' | 'rejected', comment = '') => {
     try {
-      const { error } = await api.decide(id, decision)
-      if (error) setNotice(`승인했지만 실행하지 못했습니다: ${error}`)
+      const { error } = await api.decide(id, decision, comment)
+      if (error) setNotice(`${decision === 'approved' ? '승인' : '거절'}했지만 실행하지 못했습니다: ${error}`)
     } catch (err) {
       setNotice((err as Error).message)
     }

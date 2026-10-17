@@ -8,11 +8,13 @@ import { startCodex } from './adapters/codex.ts'
 import { startHermes } from './adapters/hermes.ts'
 import { startLocalModel } from './adapters/localModel.ts'
 
-/** 작업 위임 도구에 필요한 정보. 하위 에이전트가 있을 때만 넘긴다 */
-export type DelegationContext = {
+/** 에이전트 도구(승인 요청, 작업 위임)에 필요한 정보 */
+export type AgentToolsContext = {
   /** 에이전트 도구(MCP 서버)가 서버 API를 부를 때 쓰는 실행별 토큰 */
   token: string
   apiUrl: string
+  /** 이 실행에서 쓸 수 있는 도구 이름 */
+  tools: string[]
 }
 
 export type AdapterContext = {
@@ -21,8 +23,10 @@ export type AdapterContext = {
   systemPrompt: string
   /** 연결(GitHub 토큰 등)에서 넘겨줄 환경 변수 */
   env: Record<string, string>
-  delegation: DelegationContext | null
-  /** 이 실행의 id (로컬 모델이 위임 도구를 직접 부를 때 쓴다) */
+  agentTools: AgentToolsContext | null
+  /** 이어서 실행할 Claude Code 세션 (승인 후 이어서 진행할 때) */
+  resumeSessionId?: string
+  /** 이 실행의 id (로컬 모델이 에이전트 도구를 직접 부를 때 쓴다) */
   runId: string
   emit: (e: RunEvent) => void
   /** 실행이 끝났을 때 한 번 부른다 */

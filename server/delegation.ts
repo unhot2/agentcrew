@@ -12,15 +12,25 @@ export function setApiUrl(url: string) {
   apiUrl = url
 }
 
-type Grant = { runId: string; agentId: string; taskId: string }
+type Grant = { runId: string; agentId: string; taskId: string; canDelegate: boolean }
 
-/** 실행 중에만 유효한 토큰. 에이전트는 이 토큰으로 자기 팀에만 일을 맡길 수 있다 */
+/** 실행 중에만 유효한 토큰. 에이전트는 이 토큰으로 승인을 요청하고, 팀이 있으면 자기 팀에만 일을 맡길 수 있다 */
 const grants = new Map<string, Grant>()
 
 export function issueGrant(grant: Grant) {
   const token = randomUUID()
   grants.set(token, grant)
-  return { token, apiUrl }
+  return { token, apiUrl, tools: toolsFor(grant).map((t) => t.function.name) }
+}
+
+/** 이 실행에서 쓸 수 있는 도구. 승인 요청은 누구나, 위임 도구는 위임할 수 있을 때만 */
+function toolsFor(grant: Grant) {
+  return grant.canDelegate ? [...DELEGATION_TOOLS, APPROVAL_TOOL] : [APPROVAL_TOOL]
+}
+
+export function agentTools(token: string) {
+  const grant = grants.get(token)
+  return grant ? toolsFor(grant) : []
 }
 
 export function revokeGrant(token: string) {
@@ -85,7 +95,28 @@ export const DELEGATION_TOOLS = [
   },
 ]
 
-export const DELEGATION_TOOL_NAMES = DELEGATION_TOOLS.map((t) => t.function.name)
+/** 사람의 확인이 필요할 때 승인 메뉴에 요청을 올리는 도구. 위임과 상관없이 모든 에이전트가 쓴다 */
+const APPROVAL_TOOL = {
+  type: 'function' as const,
+  function: {
+    name: 'request_approval',
+    description:
+      '사람의 확인이나 결정이 필요할 때 승인 메뉴에 승인 요청을 올린다. 승인되면 이 작업이 다시 실행되어 이어서 진행한다.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '무엇을 승인받는지 한 줄로 (예: 메인 화면 디자인 초안)' },
+        details: {
+          type: 'string',
+          description: '확인할 내용, 결과물 파일 위치, 고를 선택지, 승인되면 다음에 할 일을 자세히',
+        },
+      },
+      required: ['title', 'details'],
+    },
+  },
+}
+
+export const AGENT_TOOL_NAMES = [...DELEGATION_TOOLS, APPROVAL_TOOL].map((t) => t.function.name)
 
 const PRIORITIES = new Set<TaskPriority>(['urgent', 'high', 'medium', 'low'])
 
@@ -95,14 +126,14 @@ function openCount(agentId: string) {
   ).length
 }
 
-function lastResult(task: Task) {
+export function lastResult(task: Task, max = 600) {
   const events = task.runs[task.runs.length - 1]?.events ?? []
   const result = [...events].reverse().find((e) => e.kind === 'result')
-  return result && result.kind === 'result' ? result.text.slice(0, 600) : ''
+  return result && result.kind === 'result' ? result.text.slice(0, max) : ''
 }
 
-/** 위임 도구 실행. 토큰으로 누가 어떤 작업에서 부르는지 확인한다 */
-export async function callDelegationTool(
+/** 에이전트 도구 실행. 토큰으로 누가 어떤 작업에서 부르는지 확인한다 */
+export async function callAgentTool(
   token: string,
   name: string,
   args: Record<string, unknown>,
@@ -112,6 +143,37 @@ export async function callDelegationTool(
   const agent = state.agents.find((a) => a.id === grant.agentId)
   const parent = state.tasks.find((t) => t.id === grant.taskId)
   if (!agent || !parent) return { text: '에이전트나 작업을 찾을 수 없습니다.', isError: true }
+
+  if (name === 'request_approval') {
+    const title = String(args.title ?? '').trim()
+    const details = String(args.details ?? '').trim()
+    if (!title) return { text: '무엇을 승인받는지 title에 적으세요.', isError: true }
+    // 같은 작업에 기다리는 요청이 있으면 새로 만들지 않고 내용을 바꾼다
+    const existing = state.approvals.find((a) => a.taskId === parent.id && a.status === 'pending')
+    if (existing) Object.assign(existing, { reason: title, details, source: 'agent', requestedAt: new Date().toISOString() })
+    else {
+      state.approvals.unshift({
+        id: randomUUID(),
+        taskId: parent.id,
+        agentId: agent.id,
+        reason: title,
+        details,
+        source: 'agent',
+        status: 'pending',
+        requestedAt: new Date().toISOString(),
+        decidedAt: null,
+      })
+    }
+    log('approval', `${agent.name}가 ${taskKey(parent)}에서 승인을 요청했습니다: ${title}`, { taskId: parent.id, agentId: agent.id })
+    notify('approval.requested', `${agent.name}: ${taskKey(parent)} ${title} 승인 요청`, { taskId: parent.id })
+    persist()
+    return {
+      text: '승인 메뉴에 요청을 올렸습니다. 승인 전에 해야 할 일은 더 하지 말고, 지금까지 한 일을 요약하고 끝내세요. 승인되면 이 작업이 다시 실행됩니다.',
+      isError: false,
+    }
+  }
+
+  if (!grant.canDelegate) return { text: `이 실행에서는 쓸 수 없는 도구입니다: ${name}`, isError: true }
   const team = descendantsOf(agent.id)
 
   if (name === 'list_team') {
@@ -209,3 +271,11 @@ export const DELEGATION_GUIDE = `## 팀에 일 맡기기
 /** 팀이 있지만 작업에서 위임을 막았을 때 덧붙이는 안내 */
 export const NO_DELEGATION_GUIDE = `## 직접 처리하기
 이 작업은 위임이 금지되어 있습니다. 하위 에이전트에게 맡기지 말고 직접 처리하세요.`
+
+/** 승인 요청 도구를 쓸 수 있는 에이전트에게 덧붙이는 안내 */
+export const APPROVAL_GUIDE = `## 승인 받기
+사람의 확인이나 결정이 필요하면 agentcrew 도구의 request_approval로 승인 메뉴에 요청을 올리세요.
+- title에는 무엇을 승인받는지 한 줄로, details에는 확인할 내용, 결과물 파일 위치, 고를 선택지, 승인되면 다음에 할 일을 적습니다.
+- 요청을 올렸으면 승인 전에 하면 안 되는 일은 하지 말고, 지금까지 한 일을 요약하고 끝내세요.
+- 승인되면 이 작업이 다시 실행되고, 승인 결과와 사람의 코멘트를 받아 이어서 진행합니다.
+- 결과 글에 "승인해 주세요"라고 적기만 하면 사람에게 전달되지 않습니다. 반드시 request_approval을 쓰세요.`

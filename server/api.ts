@@ -15,7 +15,16 @@ import type {
 } from '../src/types.ts'
 import type { RunEvent } from '../src/runTypes.ts'
 import { setTaskPrefix, taskKey, taskPrompt } from '../src/taskStore.ts'
-import { DELEGATION_GUIDE, NO_DELEGATION_GUIDE, checkParentDone, hasTeam, issueGrant, revokeGrant } from './delegation.ts'
+import {
+  APPROVAL_GUIDE,
+  DELEGATION_GUIDE,
+  NO_DELEGATION_GUIDE,
+  checkParentDone,
+  hasTeam,
+  issueGrant,
+  lastResult,
+  revokeGrant,
+} from './delegation.ts'
 import { startRun, validate } from './runner.ts'
 import { isEmpty, log, persist, state, type State } from './db.ts'
 import { connectorEnv, notify, testConnector } from './notify.ts'
@@ -338,8 +347,14 @@ const SOURCE_LABEL: Record<RunSource, string> = {
   approval: '승인 후 실행',
 }
 
-/** 에이전트 지시문 뒤에 배정된 스킬 내용과, 팀이 있으면 위임 안내(위임 금지면 직접 하라는 안내)를 붙인다 */
-function systemPromptFor(agent: Agent, delegation: 'allowed' | 'forbidden' | null) {
+/** 에이전트 도구(MCP나 함수 호출)를 쓸 수 있는 어댑터. Hermes는 도구를 붙일 수 없다 */
+const TOOL_ADAPTERS = new Set<Agent['adapter']['type']>(['claude-code', 'codex', 'lmstudio', 'ollama'])
+
+/**
+ * 에이전트 지시문 뒤에 배정된 스킬 내용과, 팀이 있으면 위임 안내(위임 금지면 직접 하라는 안내),
+ * 도구를 쓸 수 있으면 승인 요청 안내를 붙인다
+ */
+function systemPromptFor(agent: Agent, delegation: 'allowed' | 'forbidden' | null, canRequestApproval: boolean) {
   const parts = [agent.instructions.trim()]
   for (const id of agent.skillIds ?? []) {
     const skill = state.skills.find((s) => s.id === id)
@@ -347,11 +362,25 @@ function systemPromptFor(agent: Agent, delegation: 'allowed' | 'forbidden' | nul
   }
   if (delegation === 'allowed') parts.push(DELEGATION_GUIDE)
   if (delegation === 'forbidden') parts.push(NO_DELEGATION_GUIDE)
+  if (canRequestApproval) parts.push(APPROVAL_GUIDE)
   return parts.filter(Boolean).join('\n\n')
 }
 
-/** 작업을 담당 에이전트로 실행하고, 실행 로그, 비용, 결과물을 작업과 에이전트에 기록한다 */
-export function runTask(taskId: string, source: RunSource = 'manual'): TaskRun {
+/** 이 작업을 이 에이전트가 마지막으로 실행한 Claude Code 세션 */
+function lastSessionId(task: Task, agentId: string) {
+  for (const run of [...task.runs].reverse()) {
+    if (run.agentId !== agentId) continue
+    const init = run.events.find((e) => e.kind === 'init')
+    if (init && init.kind === 'init' && init.sessionId) return init.sessionId
+  }
+  return undefined
+}
+
+/**
+ * 작업을 담당 에이전트로 실행하고, 실행 로그, 비용, 결과물을 작업과 에이전트에 기록한다.
+ * followUp을 주면 앞 실행에 이어서 진행한다 (Claude Code는 같은 세션을 잇고, 다른 어댑터는 앞 결과를 함께 넘긴다)
+ */
+export function runTask(taskId: string, source: RunSource = 'manual', followUp?: string): TaskRun {
   const task = state.tasks.find((t) => t.id === taskId)
   if (!task) throw new ApiError(404, '작업을 찾을 수 없습니다.')
   // 제목 없이 설명만 적었으면 설명 첫 줄을 제목으로 쓴다. 실제로 실행할 때만 저장한다
@@ -368,7 +397,14 @@ export function runTask(taskId: string, source: RunSource = 'manual'): TaskRun {
   const goal = state.goals.find((g) => g.id === project?.goalId)
   const parent = state.tasks.find((t) => t.id === task.parentTaskId)
   const delegator = state.agents.find((a) => a.id === parent?.assigneeId)?.name
-  const prompt = taskPrompt({ ...task, title }, { project, goal, parent, delegator })
+  const basePrompt = taskPrompt({ ...task, title }, { project, goal, parent, delegator })
+  const resumeSessionId = followUp && agent.adapter.type === 'claude-code' ? lastSessionId(task, agent.id) : undefined
+  const previous = followUp && !resumeSessionId ? lastResult(task, 3000) : ''
+  const prompt = !followUp
+    ? basePrompt
+    : resumeSessionId
+      ? followUp
+      : [basePrompt, previous && `## 이전 실행 결과\n${previous}`, followUp].filter(Boolean).join('\n\n')
   const error = validate(runner, prompt)
   if (error) throw new ApiError(400, error)
   if (task.title !== title) task.title = title
@@ -398,7 +434,7 @@ export function runTask(taskId: string, source: RunSource = 'manual'): TaskRun {
       if (owner) owner.spentThisMonth += e.costUsd
     }
     if (e.kind === 'exit') {
-      if (delegation) revokeGrant(delegation.token)
+      if (agentTools) revokeGrant(agentTools.token)
       taskRun.status = e.status
       const current = state.tasks.find((t) => t.id === taskId)
       if (current && e.status === 'completed' && current.status === 'in_progress') {
@@ -416,12 +452,15 @@ export function runTask(taskId: string, source: RunSource = 'manual'): TaskRun {
     persist()
   }
 
-  // 팀이 있는 에이전트에게만 위임 도구를 준다. 작업에서 위임을 막았으면 주지 않는다. 토큰은 이 실행이 끝나면 버린다
+  // 도구를 붙일 수 있으면 승인 요청 도구를 주고, 팀이 있고 작업에서 위임을 막지 않았으면 위임 도구도 준다.
+  // 토큰은 이 실행이 끝나면 버린다
   const team = hasTeam(agent.id)
-  const delegation = team && !task.noDelegation ? issueGrant({ runId: '', agentId: agent.id, taskId }) : null
-  const guide = !team ? null : delegation ? 'allowed' : 'forbidden'
+  const canDelegate = team && !task.noDelegation && TOOL_ADAPTERS.has(agent.adapter.type)
+  const agentTools = TOOL_ADAPTERS.has(agent.adapter.type) ? issueGrant({ runId: '', agentId: agent.id, taskId, canDelegate }) : null
+  const guide = !team ? null : canDelegate ? 'allowed' : 'forbidden'
+  const systemPrompt = systemPromptFor(agent, guide, !!agentTools)
   // 이벤트는 모두 비동기로 오므로 id를 바로 채워 넣어도 순서가 꼬이지 않는다
-  const run = startRun(runner, prompt, onEvent, { systemPrompt: systemPromptFor(agent, guide), env: connectorEnv(), delegation })
+  const run = startRun(runner, prompt, onEvent, { systemPrompt, env: connectorEnv(), agentTools, resumeSessionId })
   taskRun.id = run.id
   task.runs.push(taskRun)
   task.status = 'in_progress'
@@ -471,22 +510,38 @@ export function requestRun(task: Task, source: 'heartbeat' | 'routine') {
   }
 }
 
-/** 승인하면 바로 실행한다. 실행이 거절되면 승인은 남기고 이유를 돌려준다 */
-export function decideApproval(id: string, decision: 'approved' | 'rejected') {
+/** 승인 결과를 에이전트에게 전하는 글. 반려에 코멘트가 없으면 이어서 실행하지 않으므로 null */
+function approvalFollowUp(approval: Approval) {
+  const comment = approval.comment ? `\n코멘트: ${approval.comment}` : ''
+  if (approval.status === 'approved')
+    return `## 승인 결과\n사람이 "${approval.reason}" 요청을 승인했습니다.${comment}\n승인된 내용으로 다음 단계를 이어서 진행하세요.`
+  if (!approval.comment) return null
+  return `## 승인 결과\n사람이 "${approval.reason}" 요청을 반려했습니다.${comment}\n코멘트를 반영해 고친 뒤, 다시 request_approval로 승인을 요청하세요.`
+}
+
+/**
+ * 실행 전 승인은 승인하면 바로 실행한다. 에이전트가 올린 승인은 결과와 코멘트를 넘겨 이어서 실행한다
+ * (반려에 코멘트가 있으면 코멘트를 반영해 고치게 한다). 실행이 거절되면 승인은 남기고 이유를 돌려준다
+ */
+export function decideApproval(id: string, decision: 'approved' | 'rejected', comment = '') {
   const approval = state.approvals.find((a) => a.id === id)
   if (!approval) throw new ApiError(404, '승인 요청을 찾을 수 없습니다.')
   if (approval.status !== 'pending') throw new ApiError(409, '이미 처리한 요청입니다.')
   approval.status = decision
   approval.decidedAt = now()
+  if (comment.trim()) approval.comment = comment.trim()
   const task = state.tasks.find((t) => t.id === approval.taskId)
   const key = task ? taskKey(task) : '작업'
-  log('approval', `${key} 실행 요청을 ${decision === 'approved' ? '승인' : '거절'}했습니다.`, {
+  const what = approval.source === 'agent' ? `"${approval.reason}" 요청` : '실행 요청'
+  log('approval', `${key} ${what}을 ${decision === 'approved' ? '승인' : '거절'}했습니다.`, {
     taskId: approval.taskId,
     agentId: approval.agentId,
   })
-  if (decision === 'rejected') return { approval, error: null }
+  persist()
+  const followUp = approval.source === 'agent' ? approvalFollowUp(approval) : undefined
+  if (followUp === null || (decision === 'rejected' && approval.source !== 'agent')) return { approval, error: null }
   try {
-    runTask(approval.taskId, 'approval')
+    runTask(approval.taskId, 'approval', followUp)
     return { approval, error: null }
   } catch (err) {
     return { approval, error: (err as Error).message }

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import type { Agent, ClaudeCodeConfig } from '../../src/types.ts'
 import type { AdapterStatus, RunEvent } from '../../src/runTypes.ts'
-import { DELEGATION_TOOL_NAMES, mcpServerSpec } from '../delegation.ts'
+import { mcpServerSpec } from '../delegation.ts'
 import { killTree, onLines, summarize, type AdapterContext, type AdapterHandle } from '../runner.ts'
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude'
@@ -40,12 +40,14 @@ export function startClaudeCode(agent: Agent, ctx: AdapterContext): AdapterHandl
     // 남은 예산을 이번 실행의 상한으로 건다
     args.push('--max-budget-usd', (agent.monthlyBudget - agent.spentThisMonth).toFixed(2))
   }
-  if (ctx.delegation) {
-    // 위임 도구는 화면 없이 실행하므로 허락을 묻지 않고 쓸 수 있게 미리 허용한다
-    const mcp = { mcpServers: { agentcrew: mcpServerSpec(ctx.delegation) } }
-    args.push('--allowedTools', DELEGATION_TOOL_NAMES.map((n) => `mcp__agentcrew__${n}`).join(','))
+  if (ctx.agentTools) {
+    // 에이전트 도구는 화면 없이 실행하므로 허락을 묻지 않고 쓸 수 있게 미리 허용한다
+    const mcp = { mcpServers: { agentcrew: mcpServerSpec(ctx.agentTools) } }
+    args.push('--allowedTools', ctx.agentTools.tools.map((n) => `mcp__agentcrew__${n}`).join(','))
     args.push('--mcp-config', JSON.stringify(mcp))
   }
+  // 승인 후에는 앞 실행의 대화를 이어서 진행한다
+  if (ctx.resumeSessionId) args.push('--resume', ctx.resumeSessionId)
 
   // 작업 지시는 인자 대신 stdin으로 넘겨 따옴표, 줄바꿈 문제를 피한다
   const child = spawn(CLAUDE_BIN, args, { cwd: agent.workdir, windowsHide: true, env: { ...process.env, ...ctx.env } })

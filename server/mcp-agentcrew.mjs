@@ -1,4 +1,4 @@
-// AgentCrew 위임 도구를 Claude Code, Codex에 붙이는 MCP 서버 (stdio, 줄 단위 JSON-RPC).
+// AgentCrew 에이전트 도구(승인 요청, 작업 위임)를 Claude Code, Codex에 붙이는 MCP 서버 (stdio, 줄 단위 JSON-RPC).
 // 도구 정의와 실행은 AgentCrew 서버가 맡고, 여기서는 실행별 토큰을 붙여 전달만 한다.
 import { createInterface } from 'node:readline'
 

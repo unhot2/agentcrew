@@ -71,7 +71,7 @@ export function InboxPage({ data, onOpenTask, onOpenAgent, onSetTaskStatus, onRu
                   <div className="inbox-actions">
                     <button onClick={() => onDecide(a.id, 'rejected')}>거절</button>
                     <button className="primary" onClick={() => onDecide(a.id, 'approved')}>
-                      승인하고 실행
+                      {a.source === 'agent' ? '승인하고 진행' : '승인하고 실행'}
                     </button>
                   </div>
                 </li>

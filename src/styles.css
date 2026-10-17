@@ -565,6 +565,15 @@ input.task-title:hover { border-color: var(--border); }
 .badge.approval-pending { background: var(--warning-bg); color: var(--warning); }
 .badge.approval-approved { background: var(--success-bg); color: var(--success); }
 .badge.approval-rejected { background: var(--surface-muted); color: var(--text-secondary); }
+.approval-item { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.approval-item:last-child { border-bottom: none; }
+.approval-item .inbox-row { border-bottom: none; }
+.approval-details, .approval-comment { margin: 4px 8px 0; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.approval-details { padding: 8px 10px; border-radius: var(--radius); background: var(--surface-muted); }
+.approval-comment { color: var(--text-secondary); }
+.approval-decide { margin: 8px 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.approval-decide textarea { height: auto; padding: 6px 10px; resize: vertical; }
+.approval-decide-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 
 /* 활동 기록 */
 .activity-day { margin-bottom: 20px; }

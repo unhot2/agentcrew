@@ -28,7 +28,7 @@ import { claudeStatus } from './adapters/claudeCode.ts'
 import { codexStatus } from './adapters/codex.ts'
 import { hermesStatus } from './adapters/hermes.ts'
 import { localModelStatus } from './adapters/localModel.ts'
-import { DELEGATION_TOOLS, callDelegationTool, setApiUrl } from './delegation.ts'
+import { agentTools, callAgentTool, setApiUrl } from './delegation.ts'
 import { getRun, stopRun } from './runner.ts'
 import { dataFilePath, flush, onChange } from './db.ts'
 import { startScheduler } from './scheduler.ts'
@@ -110,14 +110,14 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     return sendJson(res, 200, await localModelStatus(base, url.searchParams.get('type') ?? undefined))
   }
 
-  // 실행 중인 에이전트가 MCP 서버를 통해 부르는 위임 도구. 실행별 토큰이 있어야 한다
+  // 실행 중인 에이전트가 MCP 서버를 통해 부르는 도구(승인 요청, 위임). 실행별 토큰이 있어야 한다
   if (path.startsWith('/api/agent/')) {
     const token = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '')
     if (!token) throw new ApiError(401, '토큰이 필요합니다.')
-    if (method === 'GET' && path === '/api/agent/tools') return sendJson(res, 200, { tools: DELEGATION_TOOLS })
+    if (method === 'GET' && path === '/api/agent/tools') return sendJson(res, 200, { tools: agentTools(token) })
     if (method === 'POST' && path === '/api/agent/call') {
       const { name, arguments: args } = await readJson(req)
-      return sendJson(res, 200, await callDelegationTool(token, String(name), args ?? {}))
+      return sendJson(res, 200, await callAgentTool(token, String(name), args ?? {}))
     }
   }
   if (method === 'GET' && path === '/api/state') return sendJson(res, 200, publicState())
@@ -153,9 +153,9 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     const [, kind, id, verb] = action
     if (method === 'POST' && kind === 'tasks' && verb === 'run') return sendJson(res, 201, runTask(id))
     if (method === 'POST' && kind === 'approvals' && verb === 'decide') {
-      const { decision } = await readJson(req)
+      const { decision, comment } = await readJson(req)
       if (decision !== 'approved' && decision !== 'rejected') throw new ApiError(400, '승인 또는 거절만 할 수 있습니다.')
-      return sendJson(res, 200, decideApproval(id, decision))
+      return sendJson(res, 200, decideApproval(id, decision, typeof comment === 'string' ? comment : ''))
     }
     if (method === 'POST' && kind === 'connectors' && verb === 'test') return sendJson(res, 200, await checkConnector(id))
     if (method === 'GET' && kind === 'artifacts' && verb === 'content') return sendJson(res, 200, artifactContent(id))
