@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { IconBox, IconCode, IconDeviceDesktop, IconRefresh, IconSparkles } from '@tabler/icons-react'
+import { IconBox, IconCode, IconDeviceDesktop, IconFeather, IconRefresh, IconSparkles } from '@tabler/icons-react'
 import { ADAPTERS, CLAUDE_MODELS, defaultAdapterConfig } from '../adapters'
 import type { AdapterStatus } from '../runTypes'
 import type { AdapterConfig, AdapterType } from '../types'
@@ -9,6 +9,7 @@ export type ClaudeCheck = { phase: 'checking' } | { phase: 'offline' } | { phase
 const ICONS: Record<AdapterType, typeof IconCode> = {
   'claude-code': IconSparkles,
   codex: IconCode,
+  hermes: IconFeather,
   lmstudio: IconDeviceDesktop,
   ollama: IconBox,
 }
@@ -28,15 +29,15 @@ function useAdapterStatus(value: AdapterConfig) {
   const [check, setCheck] = useState<ClaudeCheck>({ phase: 'checking' })
   const [nonce, setNonce] = useState(0)
   const local = value.type === 'lmstudio' || value.type === 'ollama'
-  const key = value.type === 'codex' ? 'codex' : local ? `${value.type}:${value.baseUrl}` : ''
+  const key = value.type === 'codex' || value.type === 'hermes' ? value.type : local ? `${value.type}:${value.baseUrl}` : ''
 
   useEffect(() => {
     if (!key) return
     setCheck({ phase: 'checking' })
     let cancelled = false
     const url =
-      value.type === 'codex'
-        ? '/api/adapters/codex/status'
+      value.type === 'codex' || value.type === 'hermes'
+        ? `/api/adapters/${value.type}/status`
         : `/api/adapters/local/status?type=${value.type}&base=${encodeURIComponent((value as { baseUrl: string }).baseUrl)}`
     const timer = setTimeout(() => {
       fetch(url)
@@ -142,6 +143,35 @@ function AdapterFields({ value, onChange, models }: Props & { models: string[] }
           </Field>
         </div>
       )
+    case 'hermes':
+      return (
+        <>
+          <div className="grid-3">
+            <Field label="모델" hint="비우면 Hermes에 설정된 기본 모델">
+              <input className="mono" value={value.model} placeholder="기본값" onChange={(e) => onChange({ ...value, model: e.target.value })} />
+            </Field>
+            <Field label="공급자" hint="비우면 Hermes 기본값 (예: anthropic, openrouter)">
+              <input className="mono" value={value.provider} placeholder="기본값" onChange={(e) => onChange({ ...value, provider: e.target.value })} />
+            </Field>
+            <Field label="최대 턴 수">
+              <input
+                type="number"
+                min={1}
+                max={200}
+                value={value.maxTurns}
+                onChange={(e) => onChange({ ...value, maxTurns: Math.max(1, Number(e.target.value)) })}
+              />
+            </Field>
+          </div>
+          <label className="check">
+            <input type="checkbox" checked={value.yolo} onChange={(e) => onChange({ ...value, yolo: e.target.checked })} />
+            <span>
+              위험 명령도 묻지 않고 실행 (--yolo)
+              <span className="muted"> · 화면 없이 실행하므로 끄면 Hermes가 위험하다고 보는 명령은 거절됩니다</span>
+            </span>
+          </label>
+        </>
+      )
     case 'lmstudio':
     case 'ollama':
       return (
@@ -216,7 +246,7 @@ function ModelPicker({ models, value, placeholder, onChange }: ModelPickerProps)
   )
 }
 
-const NAMES: Record<AdapterType, string> ={ 'claude-code': 'Claude Code', codex: 'Codex', lmstudio: 'LM Studio', ollama: 'Ollama' }
+const NAMES: Record<AdapterType, string> = { 'claude-code': 'Claude Code', codex: 'Codex', hermes: 'Hermes', lmstudio: 'LM Studio', ollama: 'Ollama' }
 
 type ConnectionProps = {
   type: AdapterType
@@ -252,11 +282,17 @@ function Connection({ type, check, onRecheck, onUseBase }: ConnectionProps) {
       text = `${NAMES[type]} CLI를 찾을 수 없습니다. 설치 후 다시 확인하세요.`
     } else if (!s.loggedIn) {
       tone = 'warn'
-      const login = type === 'codex' ? 'codex login' : 'claude auth login'
-      text = `${s.version} 설치됨 · 로그인 안 됨. 터미널에서 ${login}을 실행하세요.`
+      const login = type === 'codex' ? 'codex login' : type === 'hermes' ? 'hermes setup' : 'claude auth login'
+      text = `${s.version} 설치됨 · ${type === 'hermes' ? '모델 설정 안 됨' : '로그인 안 됨'}. 터미널에서 ${login}을 실행하세요.`
     } else {
       tone = 'ok'
-      text = `${s.version} · ${s.account ?? '로그인됨'}${type === 'codex' ? ' · 비용은 Codex 요금제에서 차감되어 여기에는 $0으로 기록됩니다.' : ' 계정으로 실행됩니다.'}`
+      const tail =
+        type === 'codex'
+          ? ' · 비용은 Codex 요금제에서 차감되어 여기에는 $0으로 기록됩니다.'
+          : type === 'hermes'
+            ? ' 모델로 실행됩니다. Hermes는 비용 정보를 주지 않아 $0으로 기록됩니다.'
+            : ' 계정으로 실행됩니다.'
+      text = `${s.version} · ${s.account ?? '로그인됨'}${tail}`
     }
   }
   return (

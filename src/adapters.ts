@@ -10,6 +10,7 @@ export type AdapterMeta = {
 export const ADAPTERS: AdapterMeta[] = [
   { type: 'claude-code', label: 'Claude Code', description: 'Anthropic CLI 에이전트', local: false },
   { type: 'codex', label: 'Codex', description: 'OpenAI CLI 에이전트', local: false },
+  { type: 'hermes', label: 'Hermes', description: 'Nous Research 에이전트', local: false },
   { type: 'lmstudio', label: 'LM Studio', description: '로컬 OpenAI 호환 서버', local: true },
   { type: 'ollama', label: 'Ollama', description: '로컬 모델 런타임', local: true },
 ]
@@ -22,6 +23,8 @@ export function defaultAdapterConfig(type: AdapterType): AdapterConfig {
       return { type, model: '', permissionMode: 'acceptEdits' }
     case 'codex':
       return { type, model: '', sandbox: 'workspace-write', approval: 'on-request' }
+    case 'hermes':
+      return { type, model: '', provider: '', yolo: true, maxTurns: 30 }
     case 'lmstudio':
       return { type, baseUrl: 'http://localhost:1234/v1', model: '', temperature: 0.7 }
     case 'ollama':

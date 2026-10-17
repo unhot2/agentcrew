@@ -23,7 +23,7 @@ export function TasksPage(props: Props) {
   const task = tasks.find((t) => t.id === selectedId) ?? null
 
   const blockedReason = (t: Task): string | null => {
-    if (!t.title.trim()) return '제목을 입력하세요.'
+    if (!t.title.trim() && !t.description.trim()) return '제목이나 설명을 입력하세요.'
     const agent = agents.find((a) => a.id === t.assigneeId)
     if (!agent) return '담당 에이전트를 지정하세요.'
     // Claude Code는 미리 확인해 둔 연결 상태로 막고, 다른 어댑터는 실행할 때 서버가 확인한다

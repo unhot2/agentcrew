@@ -23,6 +23,14 @@ export function TaskDetail({ task, tasks, agents, projects, blockedReason, runEr
   const parent = tasks.find((t) => t.id === task.parentTaskId)
   const children = tasks.filter((t) => t.parentTaskId === task.id)
   const nameOf = (id: string | null) => agents.find((a) => a.id === id)?.name ?? '담당 없음'
+  // 프로젝트에 폴더가 있으면 그 폴더, 없으면 담당 에이전트의 폴더에서 실행된다
+  const project = projects.find((p) => p.id === task.projectId)
+  const assignee = agents.find((a) => a.id === task.assigneeId)
+  const runFolder = project?.workdir
+    ? { path: project.workdir, from: `프로젝트 ${project.name || '이름 없음'}의 폴더` }
+    : assignee
+      ? { path: assignee.workdir, from: `${assignee.name}의 작업 디렉터리` }
+      : null
   const activeRun = task.runs.find((r) => r.status === 'running')
   const runs = [...task.runs].reverse()
   const totalCost = task.runs.reduce((sum, r) => sum + r.costUsd, 0)
@@ -33,10 +41,12 @@ export function TaskDetail({ task, tasks, agents, projects, blockedReason, runEr
         <div className="task-title-wrap">
           <span className="task-key">{taskKey(task)}</span>
           <input
-            className="task-title"
+            className={`task-title${task.title ? '' : ' empty'}`}
             value={task.title}
-            placeholder="작업 제목"
+            placeholder="작업 제목을 입력하세요"
             aria-label="작업 제목"
+            // 새로 만든 작업은 바로 제목을 적을 수 있게 한다
+            autoFocus={!task.title && !task.description && task.runs.length === 0}
             onChange={(e) => onChange({ title: e.target.value })}
           />
         </div>
@@ -105,6 +115,13 @@ export function TaskDetail({ task, tasks, agents, projects, blockedReason, runEr
             onChange={(e) => onChange({ description: e.target.value })}
           />
         </Field>
+        <label className="check">
+          <input type="checkbox" checked={!!task.noDelegation} onChange={(e) => onChange({ noDelegation: e.target.checked })} />
+          <span>
+            위임 금지
+            <span className="muted"> · 담당 에이전트가 하위 에이전트에게 넘기지 않고 직접 합니다</span>
+          </span>
+        </label>
       </div>
 
       {parent && (
@@ -147,8 +164,13 @@ export function TaskDetail({ task, tasks, agents, projects, blockedReason, runEr
           <IconTerminal2 size={16} aria-hidden /> 실행
           {totalCost > 0 && <span className="muted section-meta">누적 ${totalCost.toFixed(2)}</span>}
         </h2>
+        {runFolder && (
+          <p className="muted run-folder">
+            실행 폴더: <span className="mono">{runFolder.path}</span> ({runFolder.from})
+          </p>
+        )}
         <div className="run-actions">
-          {blockedReason && !activeRun && <span className="muted">{blockedReason}</span>}
+          {blockedReason && !activeRun && <span className="blocked-reason">{blockedReason}</span>}
           {activeRun ? (
             <button onClick={() => onStop(activeRun.id)}>
               <IconPlayerStop size={14} aria-hidden /> 중지

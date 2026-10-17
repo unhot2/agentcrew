@@ -2,6 +2,7 @@ import { IconChecklist, IconPlus, IconTrash } from '@tabler/icons-react'
 import { PROJECT_COLORS, PROJECT_STATUS_LABEL, PROJECT_STATUS_ORDER } from '../projectStore'
 import { STATUS_LABEL, STATUS_ORDER, taskKey } from '../taskStore'
 import type { Agent, Goal, Project, ProjectStatus, Task } from '../types'
+import { isAbsolutePath } from '../store'
 import { Field } from './AdapterSettings'
 
 type Props = {
@@ -84,6 +85,22 @@ export function ProjectDetail({ project, tasks, agents, goals, onChange, onDelet
             </div>
           </div>
         </div>
+        <Field
+          label="작업 폴더"
+          hint={
+            project.workdir && !isAbsolutePath(project.workdir)
+              ? '절대 경로로 입력하세요. 예: C:\\Users\\...\\my-project'
+              : '이 프로젝트의 작업은 이 폴더에서 실행합니다. 비우면 담당 에이전트의 작업 디렉터리에서 실행합니다.'
+          }
+        >
+          <input
+            className="mono"
+            value={project.workdir ?? ''}
+            placeholder="C:\Users\...\my-project"
+            aria-invalid={!!project.workdir && !isAbsolutePath(project.workdir)}
+            onChange={(e) => onChange({ workdir: e.target.value })}
+          />
+        </Field>
         <Field label="목표" hint="목표를 연결하면 이 프로젝트의 작업을 실행할 때 목표를 맥락으로 함께 넘깁니다.">
           <select value={project.goalId ?? ''} onChange={(e) => onChange({ goalId: e.target.value || null })}>
             <option value="">목표 없음</option>

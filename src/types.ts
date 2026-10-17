@@ -1,6 +1,6 @@
 import type { RunEvent, RunStatus } from './runTypes'
 
-export type AdapterType = 'claude-code' | 'codex' | 'lmstudio' | 'ollama'
+export type AdapterType = 'claude-code' | 'codex' | 'hermes' | 'lmstudio' | 'ollama'
 
 export type ClaudeCodeConfig = {
   type: 'claude-code'
@@ -15,6 +15,17 @@ export type CodexConfig = {
   approval: 'untrusted' | 'on-request' | 'never'
 }
 
+export type HermesConfig = {
+  type: 'hermes'
+  /** 비우면 Hermes에 설정된 기본 모델 */
+  model: string
+  /** 비우면 Hermes에 설정된 기본 공급자 */
+  provider: string
+  /** 위험 명령 확인을 묻지 않고 실행한다 (--yolo). 끄면 그런 명령은 거절된다 */
+  yolo: boolean
+  maxTurns: number
+}
+
 export type LocalModelConfig = {
   type: 'lmstudio' | 'ollama'
   baseUrl: string
@@ -22,7 +33,7 @@ export type LocalModelConfig = {
   temperature: number
 }
 
-export type AdapterConfig = ClaudeCodeConfig | CodexConfig | LocalModelConfig
+export type AdapterConfig = ClaudeCodeConfig | CodexConfig | HermesConfig | LocalModelConfig
 
 export type AgentStatus = 'running' | 'idle' | 'paused' | 'over-budget'
 
@@ -72,6 +83,8 @@ export type Task = {
   projectId?: string | null
   /** 다른 에이전트가 위임해서 만든 작업이면 그 상위 작업 */
   parentTaskId?: string | null
+  /** 켜면 담당 에이전트에게 위임 도구를 주지 않아 직접 하게 한다 */
+  noDelegation?: boolean
   createdAt: string
   updatedAt: string
   runs: TaskRun[]
@@ -87,6 +100,8 @@ export type Project = {
   color: string
   leadAgentId: string | null
   goalId?: string | null
+  /** 이 프로젝트 작업을 실행할 폴더 (절대 경로). 비우면 담당 에이전트의 작업 디렉터리 */
+  workdir?: string
   createdAt: string
 }
 

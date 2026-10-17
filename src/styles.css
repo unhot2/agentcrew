@@ -204,7 +204,7 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .field-hint { font-size: 11px; color: var(--text-muted); }
 input[aria-invalid='true'] ~ .field-hint { color: var(--danger); }
 
-.adapter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.adapter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 14px; }
 .adapter-card {
   height: auto;
   flex-direction: column;
@@ -612,3 +612,21 @@ input[type='checkbox'] { flex: none; width: 16px; height: 16px; padding: 0; acce
 
 .parent-link { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; font-size: 13px; }
 .connection-action { height: 26px; padding: 0 10px; font-size: 12px; flex: none; }
+
+/* 제목이 비어 있으면 입력칸임을 알 수 있게 테두리를 보인다 */
+input.task-title.empty { border-color: var(--border-strong); background: var(--surface); }
+.blocked-reason { margin-right: auto; font-size: 12px; color: var(--warning); }
+.run-folder { margin: 0 0 4px; word-break: break-all; }
+
+/* 오피스: 픽셀 그림이 흐려지지 않게 정수배로 키운다 */
+.office-canvas-wrap { width: 100%; overflow-x: auto; margin-bottom: 12px; }
+.office-canvas { display: block; image-rendering: pixelated; border-radius: var(--radius); border: 1px solid var(--border); }
+.office-roster { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px; }
+.office-roster-item {
+  width: 100%; display: flex; align-items: center; gap: 8px; text-align: left;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+}
+.office-roster-item.hovered, .office-roster-item:hover { border-color: var(--border-strong); background: var(--surface-muted); }
+.office-roster-item .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.office-roster-name { font-weight: 600; white-space: nowrap; }
+.office-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }

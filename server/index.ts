@@ -26,6 +26,7 @@ import {
 } from './api.ts'
 import { claudeStatus } from './adapters/claudeCode.ts'
 import { codexStatus } from './adapters/codex.ts'
+import { hermesStatus } from './adapters/hermes.ts'
 import { localModelStatus } from './adapters/localModel.ts'
 import { DELEGATION_TOOLS, callDelegationTool, setApiUrl } from './delegation.ts'
 import { getRun, stopRun } from './runner.ts'
@@ -101,6 +102,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
 
   if (method === 'GET' && path === '/api/adapters/claude-code/status') return sendJson(res, 200, await claudeStatus())
   if (method === 'GET' && path === '/api/adapters/codex/status') return sendJson(res, 200, await codexStatus())
+  if (method === 'GET' && path === '/api/adapters/hermes/status') return sendJson(res, 200, await hermesStatus())
   if (method === 'GET' && path === '/api/adapters/local/status') {
     const base = url.searchParams.get('base') ?? ''
     // 이 PC에서 도는 모델 서버만 확인한다 (다른 주소로 요청을 보내는 통로가 되지 않게)

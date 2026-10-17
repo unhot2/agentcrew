@@ -1,6 +1,7 @@
 import {
   IconActivity,
   IconBook2,
+  IconBuilding,
   IconChecklist,
   IconFiles,
   IconFolders,
@@ -28,6 +29,7 @@ export type Page =
   | 'artifacts'
   | 'agents'
   | 'org'
+  | 'office'
   | 'skills'
   | 'approvals'
   | 'activity'
@@ -44,6 +46,7 @@ export const PAGE_TITLE: Record<Page, string> = {
   artifacts: '결과물',
   agents: '에이전트',
   org: '조직도',
+  office: '오피스',
   skills: '스킬',
   approvals: '승인',
   activity: '활동 기록',
@@ -61,6 +64,7 @@ const ICONS: Record<Page, typeof IconChecklist> = {
   artifacts: IconFiles,
   agents: IconRobot,
   org: IconSitemap,
+  office: IconBuilding,
   skills: IconBook2,
   approvals: IconShieldCheck,
   activity: IconActivity,
@@ -73,7 +77,7 @@ export const PAGES = Object.keys(PAGE_TITLE) as Page[]
 const GROUPS: { label: string | null; pages: Page[] }[] = [
   { label: null, pages: ['dashboard', 'inbox'] },
   { label: '업무', pages: ['tasks', 'projects', 'goals', 'routines', 'artifacts'] },
-  { label: '조직', pages: ['agents', 'org', 'skills', 'approvals'] },
+  { label: '조직', pages: ['agents', 'org', 'office', 'skills', 'approvals'] },
   { label: '시스템', pages: ['activity', 'connectors', 'settings'] },
 ]
 

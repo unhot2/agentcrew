@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { IconAlertTriangle, IconPlus, IconX } from '@tabler/icons-react'
 import { api, onApiError, type ServerState } from './api'
 import type { ClaudeCheck } from './components/AdapterSettings'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { PAGE_TITLE, PAGES, Sidebar, type Page } from './components/Sidebar'
 import { archiveLegacy, readLegacy } from './legacy'
 import { ActivityPage } from './pages/ActivityPage'
@@ -12,6 +13,7 @@ import { ConnectorsPage } from './pages/ConnectorsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { GoalsPage } from './pages/GoalsPage'
 import { InboxPage, inboxItems } from './pages/InboxPage'
+import { OfficePage } from './pages/OfficePage'
 import { OrgChartPage } from './pages/OrgChartPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { RoutinesPage } from './pages/RoutinesPage'
@@ -303,6 +305,7 @@ function Workspace({ initial }: { initial: ServerState }) {
       <AgentsPage state={agentState} skills={data.skills} claudeCheck={claudeCheck} onRecheckClaude={checkClaude} />
     ),
     org: () => <OrgChartPage agents={data.agents} tasks={data.tasks} onOpenAgent={openAgent} />,
+    office: () => <OfficePage agents={data.agents} tasks={data.tasks} onOpenTask={open('tasks')} onOpenAgent={openAgent} />,
     skills: () => (
       <SkillsPage
         data={data}
@@ -345,7 +348,7 @@ function Workspace({ initial }: { initial: ServerState }) {
             </button>
           </div>
         )}
-        {pages[page]()}
+        <ErrorBoundary resetKey={page}>{pages[page]()}</ErrorBoundary>
       </div>
     </div>
   )

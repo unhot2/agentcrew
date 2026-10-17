@@ -53,8 +53,8 @@ const AGENT_FIELDS: (keyof Agent)[] = [
   'skillIds',
   'monthlyBudget',
 ]
-const TASK_FIELDS: (keyof Task)[] = ['title', 'description', 'status', 'priority', 'assigneeId', 'projectId']
-const PROJECT_FIELDS: (keyof Project)[] = ['name', 'description', 'status', 'color', 'leadAgentId', 'goalId']
+const TASK_FIELDS: (keyof Task)[] = ['title', 'description', 'status', 'priority', 'assigneeId', 'projectId', 'noDelegation']
+const PROJECT_FIELDS: (keyof Project)[] = ['name', 'description', 'status', 'color', 'leadAgentId', 'goalId', 'workdir']
 const GOAL_FIELDS: (keyof Goal)[] = ['title', 'description', 'status', 'targetDate']
 const ROUTINE_FIELDS: (keyof Routine)[] = [
   'name',
@@ -93,8 +93,17 @@ export function importState(data: Partial<State>) {
 // ---------- 에이전트 ----------
 
 /** 사용 비용과 실행 상태는 서버가 관리하므로 화면에서 보낸 값으로 덮어쓰지 않는다 */
+const ADAPTER_TYPES = new Set(['claude-code', 'codex', 'hermes', 'lmstudio', 'ollama'])
+
 export function putAgent(id: string, body: Agent) {
   const existing = state.agents.find((a) => a.id === id)
+  // 어댑터가 없거나 모르는 종류면 화면이 그릴 수 없으므로 받지 않는다
+  if ((!existing || 'adapter' in body) && !ADAPTER_TYPES.has(body.adapter?.type)) {
+    throw new ApiError(400, '어댑터 정보가 올바르지 않습니다.')
+  }
+  if (!existing && (typeof body.name !== 'string' || typeof body.workdir !== 'string')) {
+    throw new ApiError(400, '이름과 작업 디렉터리가 필요합니다.')
+  }
   const fields = pick(body, AGENT_FIELDS)
   const wanted = body.status === 'paused' ? 'paused' : 'idle'
   if (existing) {
@@ -167,6 +176,8 @@ export function deleteTask(id: string) {
 
 export function putProject(id: string, body: Project) {
   const existing = state.projects.find((p) => p.id === id)
+  // 입력 중에도 저장되므로 경로 검사는 실행할 때 한다
+  if (typeof body.workdir === 'string') body.workdir = body.workdir.trim()
   if (existing) {
     const before = existing.status
     Object.assign(existing, pick(body, PROJECT_FIELDS))
@@ -327,14 +338,14 @@ const SOURCE_LABEL: Record<RunSource, string> = {
   approval: '승인 후 실행',
 }
 
-/** 에이전트 지시문 뒤에 배정된 스킬 내용과, 팀이 있으면 위임 안내를 붙인다 */
-function systemPromptFor(agent: Agent) {
+/** 에이전트 지시문 뒤에 배정된 스킬 내용과, 위임할 수 있으면 위임 안내를 붙인다 */
+function systemPromptFor(agent: Agent, canDelegate: boolean) {
   const parts = [agent.instructions.trim()]
   for (const id of agent.skillIds ?? []) {
     const skill = state.skills.find((s) => s.id === id)
     if (skill?.content.trim()) parts.push(`## 스킬: ${skill.name}\n${skill.content.trim()}`)
   }
-  if (hasTeam(agent.id)) parts.push(DELEGATION_GUIDE)
+  if (canDelegate) parts.push(DELEGATION_GUIDE)
   return parts.filter(Boolean).join('\n\n')
 }
 
@@ -342,17 +353,24 @@ function systemPromptFor(agent: Agent) {
 export function runTask(taskId: string, source: RunSource = 'manual'): TaskRun {
   const task = state.tasks.find((t) => t.id === taskId)
   if (!task) throw new ApiError(404, '작업을 찾을 수 없습니다.')
-  if (!task.title.trim()) throw new ApiError(400, '제목을 입력하세요.')
+  // 제목 없이 설명만 적었으면 설명 첫 줄을 제목으로 쓴다. 실제로 실행할 때만 저장한다
+  const firstLine = task.description.trim().split(/\r?\n/)[0]?.trim() ?? ''
+  const title = task.title.trim() || (firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine)
+  if (!title) throw new ApiError(400, '제목이나 설명을 입력하세요.')
   const agent = state.agents.find((a) => a.id === task.assigneeId)
   if (!agent) throw new ApiError(400, '담당 에이전트를 지정하세요.')
   if (agent.status === 'paused') throw new ApiError(400, '담당 에이전트가 일시 정지 상태입니다.')
   const project = state.projects.find((p) => p.id === task.projectId)
+  // 프로젝트에 작업 폴더가 있으면 에이전트 폴더 대신 그 폴더에서 실행한다
+  if (project?.workdir && !isAbsolute(project.workdir)) throw new ApiError(400, '프로젝트 작업 폴더는 절대 경로로 입력하세요.')
+  const runner = project?.workdir ? { ...agent, workdir: project.workdir } : agent
   const goal = state.goals.find((g) => g.id === project?.goalId)
   const parent = state.tasks.find((t) => t.id === task.parentTaskId)
   const delegator = state.agents.find((a) => a.id === parent?.assigneeId)?.name
-  const prompt = taskPrompt(task, { project, goal, parent, delegator })
-  const error = validate(agent, prompt)
+  const prompt = taskPrompt({ ...task, title }, { project, goal, parent, delegator })
+  const error = validate(runner, prompt)
   if (error) throw new ApiError(400, error)
+  if (task.title !== title) task.title = title
 
   const key = taskKey(task)
   const taskRun: TaskRun = {
@@ -368,7 +386,7 @@ export function runTask(taskId: string, source: RunSource = 'manual'): TaskRun {
     taskRun.events.push(e)
     const owner = state.agents.find((a) => a.id === agent.id)
     if (e.kind === 'tool' && e.path) {
-      const path = isAbsolute(e.path) ? e.path : resolve(agent.workdir, e.path)
+      const path = isAbsolute(e.path) ? e.path : resolve(runner.workdir, e.path)
       const already = state.artifacts.some((a) => a.runId === taskRun.id && a.path === path)
       if (!already) {
         state.artifacts.unshift({ id: randomUUID(), path, action: e.name, taskId, runId: taskRun.id, agentId: agent.id, at: now() })
@@ -397,10 +415,10 @@ export function runTask(taskId: string, source: RunSource = 'manual'): TaskRun {
     persist()
   }
 
-  // 팀이 있는 에이전트에게만 위임 도구를 준다. 토큰은 이 실행이 끝나면 버린다
-  const delegation = hasTeam(agent.id) ? issueGrant({ runId: '', agentId: agent.id, taskId }) : null
+  // 팀이 있는 에이전트에게만 위임 도구를 준다. 작업에서 위임을 막았으면 주지 않는다. 토큰은 이 실행이 끝나면 버린다
+  const delegation = hasTeam(agent.id) && !task.noDelegation ? issueGrant({ runId: '', agentId: agent.id, taskId }) : null
   // 이벤트는 모두 비동기로 오므로 id를 바로 채워 넣어도 순서가 꼬이지 않는다
-  const run = startRun(agent, prompt, onEvent, { systemPrompt: systemPromptFor(agent), env: connectorEnv(), delegation })
+  const run = startRun(runner, prompt, onEvent, { systemPrompt: systemPromptFor(agent, !!delegation), env: connectorEnv(), delegation })
   taskRun.id = run.id
   task.runs.push(taskRun)
   task.status = 'in_progress'

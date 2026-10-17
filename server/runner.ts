@@ -5,6 +5,7 @@ import type { Agent } from '../src/types.ts'
 import type { RunEvent, RunStatus } from '../src/runTypes.ts'
 import { startClaudeCode } from './adapters/claudeCode.ts'
 import { startCodex } from './adapters/codex.ts'
+import { startHermes } from './adapters/hermes.ts'
 import { startLocalModel } from './adapters/localModel.ts'
 
 /** 작업 위임 도구에 필요한 정보. 하위 에이전트가 있을 때만 넘긴다 */
@@ -51,7 +52,7 @@ export function isAgentRunning(agentId: string) {
 }
 
 /** 지금 실행할 수 있는 어댑터 */
-export const RUNNABLE = new Set<Agent['adapter']['type']>(['claude-code', 'codex', 'lmstudio', 'ollama'])
+export const RUNNABLE = new Set<Agent['adapter']['type']>(['claude-code', 'codex', 'hermes', 'lmstudio', 'ollama'])
 
 /** 실행 전에 막아야 할 조건이 있으면 오류 문구를 돌려준다 */
 export function validate(agent: Agent, prompt: string): string | null {
@@ -93,8 +94,8 @@ export function startRun(agent: Agent, prompt: string, onEvent: (e: RunEvent) =>
   }
 
   const ctx: AdapterContext = { ...options, prompt, runId: run.id, emit, finish }
-  const start =
-    agent.adapter.type === 'claude-code' ? startClaudeCode : agent.adapter.type === 'codex' ? startCodex : startLocalModel
+  const starters = { 'claude-code': startClaudeCode, codex: startCodex, hermes: startHermes, lmstudio: startLocalModel, ollama: startLocalModel }
+  const start = starters[agent.adapter.type]
   // 어댑터 안에서 바로 이벤트를 내보내도 실행 기록이 먼저 만들어지도록 다음 차례에 시작한다
   queueMicrotask(() => {
     try {
