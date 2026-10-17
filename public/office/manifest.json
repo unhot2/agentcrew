@@ -1,0 +1,179 @@
+{
+  "sprites": {},
+  "characters": [
+    {
+      "layers": [
+        {
+          "src": "MetroCity/CharacterModel/Shadow.png",
+          "still": true
+        },
+        {
+          "src": "MetroCity/CharacterModel/Character Model.png",
+          "row": 0
+        },
+        {
+          "src": "MetroCity/Outfits/Outfit3.png"
+        },
+        {
+          "src": "MetroCity/Hair/Hairs.png",
+          "row": 0
+        }
+      ],
+      "frameW": 32,
+      "frameH": 32,
+      "start": {
+        "down": 0,
+        "left": 6,
+        "up": 12,
+        "right": 18
+      },
+      "frames": 6,
+      "idle": 0
+    },
+    {
+      "layers": [
+        {
+          "src": "MetroCity/CharacterModel/Shadow.png",
+          "still": true
+        },
+        {
+          "src": "MetroCity/CharacterModel/Character Model.png",
+          "row": 3
+        },
+        {
+          "src": "MetroCity/Outfits/Outfit2.png"
+        },
+        {
+          "src": "MetroCity/Hair/Hairs.png",
+          "row": 6
+        }
+      ],
+      "frameW": 32,
+      "frameH": 32,
+      "start": {
+        "down": 0,
+        "left": 6,
+        "up": 12,
+        "right": 18
+      },
+      "frames": 6,
+      "idle": 0
+    },
+    {
+      "layers": [
+        {
+          "src": "MetroCity/CharacterModel/Shadow.png",
+          "still": true
+        },
+        {
+          "src": "MetroCity/CharacterModel/Character Model.png",
+          "row": 1
+        },
+        {
+          "src": "MetroCity/Outfits/Outfit5.png"
+        },
+        {
+          "src": "MetroCity/Hair/Hairs.png",
+          "row": 3
+        }
+      ],
+      "frameW": 32,
+      "frameH": 32,
+      "start": {
+        "down": 0,
+        "left": 6,
+        "up": 12,
+        "right": 18
+      },
+      "frames": 6,
+      "idle": 0
+    },
+    {
+      "layers": [
+        {
+          "src": "MetroCity/CharacterModel/Shadow.png",
+          "still": true
+        },
+        {
+          "src": "MetroCity/CharacterModel/Character Model.png",
+          "row": 5
+        },
+        {
+          "src": "MetroCity/Outfits/Outfit4.png"
+        },
+        {
+          "src": "MetroCity/Hair/Hairs.png",
+          "row": 7
+        }
+      ],
+      "frameW": 32,
+      "frameH": 32,
+      "start": {
+        "down": 0,
+        "left": 6,
+        "up": 12,
+        "right": 18
+      },
+      "frames": 6,
+      "idle": 0
+    },
+    {
+      "layers": [
+        {
+          "src": "MetroCity/CharacterModel/Shadow.png",
+          "still": true
+        },
+        {
+          "src": "MetroCity/CharacterModel/Character Model.png",
+          "row": 2
+        },
+        {
+          "src": "MetroCity/Outfits/Outfit6.png"
+        },
+        {
+          "src": "MetroCity/Hair/Hairs.png",
+          "row": 1
+        }
+      ],
+      "frameW": 32,
+      "frameH": 32,
+      "start": {
+        "down": 0,
+        "left": 6,
+        "up": 12,
+        "right": 18
+      },
+      "frames": 6,
+      "idle": 0
+    },
+    {
+      "layers": [
+        {
+          "src": "MetroCity/CharacterModel/Shadow.png",
+          "still": true
+        },
+        {
+          "src": "MetroCity/CharacterModel/Character Model.png",
+          "row": 4
+        },
+        {
+          "src": "MetroCity/Outfits/Outfit1.png"
+        },
+        {
+          "src": "MetroCity/Hair/Hairs.png",
+          "row": 5
+        }
+      ],
+      "frameW": 32,
+      "frameH": 32,
+      "start": {
+        "down": 0,
+        "left": 6,
+        "up": 12,
+        "right": 18
+      },
+      "frames": 6,
+      "idle": 0
+    }
+  ]
+}

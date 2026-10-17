@@ -1,5 +1,6 @@
 import { IconAlertTriangle } from '@tabler/icons-react'
 import { initials, STATUS_LABEL as AGENT_STATUS_LABEL } from '../components/AgentList'
+import { OfficeView } from '../components/OfficeView'
 import { RUN_STATUS_TEXT } from '../components/RunLog'
 import { PROJECT_STATUS_LABEL } from '../projectStore'
 import { STATUS_LABEL, STATUS_ORDER, taskKey } from '../taskStore'
@@ -107,6 +108,8 @@ export function DashboardPage({ agents, tasks, projects, pendingApprovals, onOpe
           </span>
         </div>
       </div>
+
+      <OfficeView agents={agents} tasks={tasks} onOpenTask={onOpenTask} onOpenAgent={onOpenAgent} />
 
       <div className="dash-grid">
         <section className="card">

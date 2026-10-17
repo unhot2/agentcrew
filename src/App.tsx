@@ -13,7 +13,6 @@ import { ConnectorsPage } from './pages/ConnectorsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { GoalsPage } from './pages/GoalsPage'
 import { InboxPage, inboxItems } from './pages/InboxPage'
-import { OfficePage } from './pages/OfficePage'
 import { OrgChartPage } from './pages/OrgChartPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { RoutinesPage } from './pages/RoutinesPage'
@@ -305,7 +304,6 @@ function Workspace({ initial }: { initial: ServerState }) {
       <AgentsPage state={agentState} skills={data.skills} claudeCheck={claudeCheck} onRecheckClaude={checkClaude} />
     ),
     org: () => <OrgChartPage agents={data.agents} tasks={data.tasks} onOpenAgent={openAgent} />,
-    office: () => <OfficePage agents={data.agents} tasks={data.tasks} onOpenTask={open('tasks')} onOpenAgent={openAgent} />,
     skills: () => (
       <SkillsPage
         data={data}
@@ -330,7 +328,16 @@ function Workspace({ initial }: { initial: ServerState }) {
 
   return (
     <div className="app">
-      <Sidebar page={page} counts={counts} claudeCheck={claudeCheck} onNavigate={go} onNewTask={() => newTask()} />
+      <Sidebar
+        page={page}
+        counts={counts}
+        claudeCheck={claudeCheck}
+        agents={data.agents}
+        selectedAgentId={agentState.selectedId}
+        onNavigate={go}
+        onOpenAgent={openAgent}
+        onNewTask={() => newTask()}
+      />
       <div className="app-main">
         <header className="topbar">
           <h1 className="page-title">{PAGE_TITLE[page]}</h1>

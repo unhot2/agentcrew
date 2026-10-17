@@ -630,3 +630,18 @@ input.task-title.empty { border-color: var(--border-strong); background: var(--s
 .office-roster-item .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .office-roster-name { font-weight: 600; white-space: nowrap; }
 .office-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+
+/* 왼쪽 메뉴의 에이전트 목록 (열고 닫기) */
+.nav-tree { display: flex; flex-direction: column; gap: 2px; }
+.nav-row { display: flex; align-items: center; gap: 2px; }
+.nav-row .nav-item { flex: 1; min-width: 0; }
+.nav-toggle { flex: none; width: 26px; height: 26px; padding: 0; justify-content: center; color: var(--text-muted); }
+.nav-sublist { list-style: none; margin: 0 0 2px 16px; padding: 0 0 0 6px; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 1px; max-height: 40vh; overflow-y: auto; }
+.nav-subitem {
+  width: 100%; display: flex; align-items: center; gap: 7px; padding: 5px 8px; border: none; border-radius: var(--radius);
+  background: none; color: var(--text-secondary); font-size: 12px; text-align: left; cursor: pointer;
+}
+.nav-subitem:hover { background: var(--surface-muted); color: var(--text); }
+.nav-subitem.selected { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: inset 0 0 0 1px var(--border); }
+.nav-subname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.nav-subempty { padding: 5px 8px; font-size: 12px; color: var(--text-muted); }

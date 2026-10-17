@@ -5,7 +5,7 @@
 import type { AdapterType } from '../types'
 import type { ActivityKind } from './activity'
 import type { OfficeAssets } from './assets'
-import { COLS, DESKS, FLOOR_ITEMS, inLounge, isWall, PARTITION_X, ROWS, TILE, WALL_DECOR, type Furniture } from './map'
+import { ALL_DESKS, COLS, FLOOR_ITEMS, inCeoRoom, isWall, PARTITION_X, ROWS, TILE, WALL_DECOR, type Furniture } from './map'
 
 type Ctx = CanvasRenderingContext2D
 
@@ -40,6 +40,15 @@ function floorLounge(ctx: Ctx, x: number, y: number) {
   r(ctx, x + 7, y + 7, 2, 2, '#e0d8c8')
 }
 
+/** CEO방 카펫 */
+function floorCeo(ctx: Ctx, x: number, y: number) {
+  r(ctx, x, y, TILE, TILE, '#3b5a8c')
+  r(ctx, x + 3, y + 3, 2, 2, '#46679c')
+  r(ctx, x + 11, y + 11, 2, 2, '#46679c')
+  r(ctx, x + 11, y + 3, 1, 1, '#33507d')
+  r(ctx, x + 3, y + 11, 1, 1, '#33507d')
+}
+
 function wall(ctx: Ctx, x: number, y: number, row: number) {
   if (row === 0) {
     r(ctx, x, y, TILE, TILE, '#36415e')
@@ -64,7 +73,9 @@ export function drawBackground(ctx: Ctx, assets: OfficeAssets) {
         if (!override(ctx, assets, ty === 0 ? 'wallTop' : 'wall', x, y + TILE)) wall(ctx, x, y, ty)
       } else if (isWall(tx, ty)) {
         if (!override(ctx, assets, 'partition', x, y + TILE)) partition(ctx, x, y)
-      } else if (inLounge(tx) || tx === PARTITION_X) {
+      } else if (inCeoRoom(tx, ty)) {
+        if (!override(ctx, assets, 'floorCeo', x, y + TILE)) floorCeo(ctx, x, y)
+      } else if (tx >= PARTITION_X) {
         if (!override(ctx, assets, 'floorLounge', x, y + TILE)) floorLounge(ctx, x, y)
       } else if (!override(ctx, assets, 'floorWork', x, y + TILE)) floorWork(ctx, x, y, ty)
     }
@@ -294,16 +305,23 @@ function seated(ctx: Ctx, fx: number, fy: number, frame: number, typing: boolean
 
 export type CharacterPose = { fx: number; fy: number; dir: Dir; walking: boolean; seated: boolean; typing: boolean }
 
+/** 발에서 머리 꼭대기까지의 높이. 말풍선과 클릭 범위에 쓴다 */
+export function characterHeight(assets: OfficeAssets, seated: boolean) {
+  const sheet = assets.characters[0]
+  if (sheet) return sheet.frameH - 2
+  return seated ? 19 : 21
+}
+
 export function drawCharacter(ctx: Ctx, assets: OfficeAssets, index: number, pose: CharacterPose, frame: number, p: Palette) {
   const sheet = assets.characters.length ? assets.characters[index % assets.characters.length] : null
   if (sheet) {
     const dir = pose.seated ? 'up' : pose.dir
-    const col = pose.walking ? sheet.walk[frame % sheet.walk.length] : sheet.idle
-    const sx = col * sheet.frameW
-    const sy = sheet.rows[dir] * sheet.frameH
-    const dx = Math.round(pose.fx - sheet.frameW / 2)
-    const dy = Math.round(pose.fy - sheet.frameH)
-    for (const layer of sheet.layers) ctx.drawImage(layer, sx, sy, sheet.frameW, sheet.frameH, dx, dy, sheet.frameW, sheet.frameH)
+    const col = sheet.start[dir] + (pose.walking ? frame % sheet.frames : sheet.idle)
+    const { frameW: w, frameH: h } = sheet
+    // 프레임 맨 아래 줄이 발밑 그림자이므로 발 위치보다 조금 아래까지 내린다
+    const dx = Math.round(pose.fx - w / 2)
+    const dy = Math.round(pose.fy - h + 2)
+    for (const l of sheet.layers) ctx.drawImage(l.img, l.still ? 0 : col * w, l.row * h, w, h, dx, dy, w, h)
     return
   }
   if (pose.seated) seated(ctx, pose.fx, pose.fy, frame, pose.typing, p)
@@ -350,7 +368,7 @@ export type Drawable = { baseY: number; draw: (ctx: Ctx) => void }
 /** 바닥 위의 가구와 책상. 캐릭터와 함께 baseY 순서로 그린다 */
 export function sceneItems(assets: OfficeAssets, screenOn: (deskIndex: number) => boolean, frame: number): Drawable[] {
   const items: Drawable[] = FLOOR_ITEMS.map((f) => ({ baseY: (f.y + 1) * TILE - 1, draw: (ctx) => drawFurniture(ctx, assets, f, frame) }))
-  DESKS.forEach((d, i) => {
+  ALL_DESKS.forEach((d, i) => {
     const x = d.x * TILE
     items.push({ baseY: (d.y + 1) * TILE - 1, draw: (ctx) => desk(ctx, assets, x, d.y * TILE, screenOn(i), frame) })
     // 의자는 앉은 사람보다 먼저 그린다

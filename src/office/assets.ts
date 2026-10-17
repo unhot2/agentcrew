@@ -5,17 +5,26 @@
 
 export type SpriteRect = { img: HTMLImageElement; x: number; y: number; w: number; h: number }
 
+/** 시트 한 줄에 방향별 걷기 프레임이 이어 붙어 있는 배치 (MetroCity 등) */
 export type CharacterSheet = {
-  /** 같은 배치의 그림을 차례로 겹쳐 그린다 (몸, 옷, 머리 등) */
-  layers: HTMLImageElement[]
+  /** 차례로 겹쳐 그린다 (그림자, 몸, 옷, 머리 등) */
+  layers: { img: HTMLImageElement; row: number; still: boolean }[]
   frameW: number
   frameH: number
-  /** 방향별 줄 번호 */
-  rows: Record<'down' | 'left' | 'right' | 'up', number>
-  /** 걷기 프레임의 열 번호들 */
-  walk: number[]
-  /** 서 있을 때 열 번호 */
+  /** 방향별 첫 프레임의 열 번호 */
+  start: Record<'down' | 'left' | 'right' | 'up', number>
+  /** 방향마다 걷기 프레임 수 */
+  frames: number
+  /** 서 있을 때 쓰는 프레임 (방향 안에서의 순서) */
   idle: number
+}
+
+type ManifestLayer = {
+  src: string
+  /** 시트의 몇 번째 줄인지 (피부색, 머리 모양 등). 기본 0 */
+  row?: number
+  /** 프레임이 하나뿐인 그림 (그림자 등). 늘 첫 칸을 쓴다 */
+  still?: boolean
 }
 
 export type OfficeAssets = {
@@ -26,7 +35,7 @@ export type OfficeAssets = {
 export const EMPTY_ASSETS: OfficeAssets = { sprites: {}, characters: [] }
 
 type ManifestRect = { src: string; x: number; y: number; w: number; h: number }
-type ManifestCharacter = Omit<CharacterSheet, 'layers'> & { layers: string[] }
+type ManifestCharacter = Omit<CharacterSheet, 'layers'> & { layers: ManifestLayer[] }
 type Manifest = { sprites?: Record<string, ManifestRect>; characters?: ManifestCharacter[] }
 
 const BASE = '/office/'
@@ -36,7 +45,7 @@ function loadImage(src: string) {
     const img = new Image()
     img.onload = () => resolve(img)
     img.onerror = () => reject(new Error(`그림을 불러오지 못했습니다: ${src}`))
-    img.src = BASE + src
+    img.src = BASE + encodeURI(src)
   })
 }
 
@@ -61,7 +70,10 @@ export async function loadOfficeAssets(): Promise<{ assets: OfficeAssets; error:
     const sprites: OfficeAssets['sprites'] = {}
     for (const [name, r] of Object.entries(manifest.sprites ?? {})) sprites[name] = { ...r, img: await image(r.src) }
     const characters = await Promise.all(
-      (manifest.characters ?? []).map(async (c) => ({ ...c, layers: await Promise.all(c.layers.map(image)) })),
+      (manifest.characters ?? []).map(async (c) => ({
+        ...c,
+        layers: await Promise.all(c.layers.map(async (l) => ({ img: await image(l.src), row: l.row ?? 0, still: !!l.still }))),
+      })),
     )
     return { assets: { sprites, characters }, error: null }
   } catch (err) {

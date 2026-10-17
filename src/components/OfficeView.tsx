@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { adapterLabel } from '../adapters'
 import { activityOf, type Activity } from '../office/activity'
 import { EMPTY_ASSETS, loadOfficeAssets, type OfficeAssets } from '../office/assets'
-import { drawBackground, drawBubble, drawCharacter, paletteFor, sceneItems, type Dir, type Drawable } from '../office/draw'
-import { COLS, DESKS, findPath, inLounge, LOUNGE_SPOTS, ROWS, TILE, visitSpot, type Point } from '../office/map'
+import { characterHeight, drawBackground, drawBubble, drawCharacter, paletteFor, sceneItems, type Dir, type Drawable } from '../office/draw'
+import { ALL_DESKS, CEO_SPOTS, COLS, DESKS, findPath, LOUNGE_SPOTS, ROWS, TILE, visitSpot, type Point } from '../office/map'
 import type { Agent, Task } from '../types'
 
 type Props = {
@@ -33,11 +33,28 @@ type Sim = {
   seenChildren: Set<string> | null
 }
 
-const randomLounge = () => LOUNGE_SPOTS[Math.floor(Math.random() * LOUNGE_SPOTS.length)]
 const tileOf = (s: Sim): Point => ({ x: Math.round(s.x), y: Math.round(s.y) })
 const same = (a: Point | null, b: Point | null) => !!a && !!b && a.x === b.x && a.y === b.y
+const randomSpot = (spots: Point[]) => spots[Math.floor(Math.random() * spots.length)]
 
-export function OfficePage({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
+/** CEO방을 쓰는 사람: 보고 대상이 없는 최상위 에이전트. 여럿이면 직책에 CEO가 들어간 사람을 고른다 */
+function ceoOf(agents: Agent[]) {
+  const ids = new Set(agents.map((a) => a.id))
+  const top = agents.filter((a) => !a.reportsTo || !ids.has(a.reportsTo))
+  return top.find((a) => /ceo/i.test(a.title)) ?? top[0] ?? null
+}
+
+/** CEO는 CEO방 책상, 나머지는 목록 순서대로 일반 책상. 값은 ALL_DESKS의 번호 */
+function assignDesks(agents: Agent[]) {
+  const ceo = ceoOf(agents)
+  const deskOf = new Map<string, number>()
+  if (ceo) deskOf.set(ceo.id, DESKS.length)
+  agents.filter((a) => a !== ceo).slice(0, DESKS.length).forEach((a, i) => deskOf.set(a.id, i))
+  return { ceo, deskOf }
+}
+
+/** 에이전트가 픽셀 캐릭터로 일하고 쉬는 모습. 대시보드 위쪽에 놓는다 */
+export function OfficeView({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const [assets, setAssets] = useState<OfficeAssets>(EMPTY_ASSETS)
@@ -59,11 +76,13 @@ export function OfficePage({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
     })
   }, [])
 
-  // 화면 너비에 맞춰 정수배로 키운다 (픽셀이 흐려지지 않게)
+  // 카드 너비를 꽉 채우도록 키운다. 정수배가 아니어도 그릴 때 흐리게 보간하지 않아 픽셀 느낌은 유지된다
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
-    const observer = new ResizeObserver(([entry]) => setScale(Math.max(1, Math.min(4, Math.floor(entry.contentRect.width / WIDTH)))))
+    // 소수 둘째 자리에서 내려서 카드보다 넓어지지 않게 한다
+    const fit = (width: number) => Math.max(1, Math.min(4, Math.floor((width / WIDTH) * 100) / 100))
+    const observer = new ResizeObserver(([entry]) => setScale(fit(entry.contentRect.width)))
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
@@ -73,8 +92,8 @@ export function OfficePage({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
     if (!canvas) return
     const dpr = window.devicePixelRatio || 1
     const s = scale * dpr
-    canvas.width = WIDTH * s
-    canvas.height = HEIGHT * s
+    canvas.width = Math.round(WIDTH * s)
+    canvas.height = Math.round(HEIGHT * s)
     const ctx = canvas.getContext('2d')!
     const off = document.createElement('canvas')
     off.width = WIDTH
@@ -92,19 +111,21 @@ export function OfficePage({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
       const dt = Math.min(0.1, (now - last) / 1000)
       last = now
       const { agents, tasks, activities, assets, hovered } = live.current
-      // 책상은 에이전트 목록 순서대로 배정한다. 책상보다 많으면 남는 사람은 휴게실에 있다
-      const deskOf = new Map(agents.slice(0, DESKS.length).map((a, i) => [a.id, i]))
+      // 책상보다 사람이 많으면 남는 사람은 휴게실에 있다
+      const { ceo, deskOf } = assignDesks(agents)
 
       // ---------- 움직임 ----------
       for (const id of sims.current.keys()) if (!activities.has(id)) sims.current.delete(id)
       for (const agent of agents) {
         const activity = activities.get(agent.id)!
         const deskIndex = deskOf.get(agent.id)
-        const desk = deskIndex === undefined ? null : DESKS[deskIndex]
+        const desk = deskIndex === undefined ? null : ALL_DESKS[deskIndex]
+        // CEO는 CEO방에서, 나머지는 휴게실에서 쉰다
+        const restSpots = agent === ceo ? CEO_SPOTS : LOUNGE_SPOTS
         const atDesk = !!desk && activity.kind !== 'idle' && activity.kind !== 'budget'
         let sim = sims.current.get(agent.id)
         if (!sim) {
-          const start = atDesk ? desk.seat : randomLounge()
+          const start = atDesk ? desk.seat : randomSpot(restSpots)
           sim = { ...start, path: [], dir: 'down', goal: null, nextWander: now + Math.random() * 4000, visit: null, seenChildren: null }
           sims.current.set(agent.id, sim)
         }
@@ -118,7 +139,7 @@ export function OfficePage({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
             if (sim.seenChildren.has(child.id)) continue
             sim.seenChildren.add(child.id)
             const target = child.assigneeId ? deskOf.get(child.assigneeId) : undefined
-            if (target !== undefined && child.assigneeId !== agent.id) sim.visit = { spot: visitSpot(DESKS[target]), until: null }
+            if (target !== undefined && child.assigneeId !== agent.id) sim.visit = { spot: visitSpot(ALL_DESKS[target]), until: null }
           }
         } else {
           sim.seenChildren = null
@@ -131,15 +152,16 @@ export function OfficePage({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
             sim.visit.until ??= now + VISIT_MS
             if (now > sim.visit.until) {
               sim.visit = null
-              goal = atDesk ? desk.seat : randomLounge()
+              goal = atDesk ? desk.seat : randomSpot(restSpots)
             }
           }
         } else if (atDesk) {
           goal = desk.seat
         } else {
           const here = tileOf(sim)
-          const settled = !sim.path.length && inLounge(here.x)
-          goal = sim.goal && inLounge(sim.goal.x) && !(settled && now > sim.nextWander) ? sim.goal : randomLounge()
+          const resting = (p: Point | null) => restSpots.some((r) => same(r, p))
+          const settled = !sim.path.length && resting(here)
+          goal = resting(sim.goal) && !(settled && now > sim.nextWander) ? sim.goal! : randomSpot(restSpots)
           if (!same(goal, sim.goal)) sim.nextWander = now + 4000 + Math.random() * 6000
         }
         if (!same(goal, sim.goal)) {
@@ -192,18 +214,20 @@ export function OfficePage({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
         const activity = activities.get(agent.id)!
         const deskIndex = deskOf.get(agent.id)
         const seated =
-          deskIndex !== undefined && !sim.path.length && !sim.visit && same(tileOf(sim), DESKS[deskIndex].seat) && activity.kind !== 'idle'
-        const fx = seated ? DESKS[deskIndex!].x * TILE + TILE : sim.x * TILE + TILE / 2
-        const fy = seated ? sim.y * TILE + 10 : sim.y * TILE + 14
+          deskIndex !== undefined && !sim.path.length && !sim.visit && same(tileOf(sim), ALL_DESKS[deskIndex].seat) && activity.kind !== 'idle'
+        const fx = seated ? ALL_DESKS[deskIndex!].x * TILE + TILE : sim.x * TILE + TILE / 2
+        // 큰 캐릭터 그림은 모니터를 가리지 않게 의자 쪽으로 조금 더 내려 앉힌다
+        const fy = seated ? sim.y * TILE + (assets.characters.length ? 15 : 10) : sim.y * TILE + 14
         const walking = sim.path.length > 0
         const typing = seated && (activity.kind === 'typing' || activity.kind === 'terminal' || activity.kind === 'thinking')
         const palette = paletteFor(agent.id, agent.adapter.type)
-        const head = seated ? fy - 19 : fy - 21
+        const head = fy - characterHeight(assets, seated)
         drawables.push({
           baseY: fy,
           draw: (c) => {
             drawCharacter(c, assets, index, { fx, fy, dir: sim.dir, walking, seated, typing }, walking ? walkFrame : slowFrame, palette)
-            if (!walking) drawBubble(c, fx, head, activity.kind, slowFrame)
+            // 앉아 있으면 모니터를 가리지 않게 말풍선을 머리 오른쪽 옆에 띄운다
+            if (!walking) drawBubble(c, seated ? fx + 14 : fx, seated ? head + 6 : head, activity.kind, slowFrame)
           },
         })
         labels.push({ id: agent.id, name: agent.name || '이름 없음', x: fx, y: fy + 2 })
@@ -250,7 +274,11 @@ export function OfficePage({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
   }
 
   return (
-    <div className="page office-page">
+    <section className="card office-card">
+      <header className="card-header">
+        <h2>오피스</h2>
+        <span className="muted">캐릭터를 누르면 실행 중인 작업이나 에이전트 설정이 열립니다</span>
+      </header>
       {assetError && <div className="notice error-notice">{assetError} 직접 그린 그림으로 표시합니다.</div>}
       <div className="office-canvas-wrap" ref={wrapRef}>
         <canvas
@@ -265,8 +293,8 @@ export function OfficePage({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
           }}
         />
       </div>
-      {agents.length > DESKS.length && (
-        <p className="muted">책상이 {DESKS.length}개라서 나머지 에이전트는 휴게실에 있습니다.</p>
+      {agents.length > ALL_DESKS.length && (
+        <p className="muted">책상이 CEO방을 포함해 {ALL_DESKS.length}개라서 나머지 에이전트는 휴게실에 있습니다.</p>
       )}
       <ul className="office-roster">
         {agents.map((a) => {
@@ -290,6 +318,6 @@ export function OfficePage({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
           )
         })}
       </ul>
-    </div>
+    </section>
   )
 }
