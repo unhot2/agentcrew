@@ -513,8 +513,10 @@ input.task-title:hover { border-color: var(--border); }
 .org-node-meta { margin-top: 4px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
 
 @media (max-width: 960px) {
-  .app { grid-template-columns: 1fr; }
-  .app-nav { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .app-nav { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; align-content: flex-start; }
+  /* 가로 메뉴에서는 에이전트 하위 목록을 숨긴다 (에이전트 화면에서 고를 수 있다) */
+  .app-nav .nav-sublist, .app-nav .nav-toggle { display: none; }
   .app-nav .brand, .new-task { margin: 0; padding: 0 8px; }
   .nav-group { flex-direction: row; margin: 0; }
   .nav-group-label, .nav-footer { display: none; }
