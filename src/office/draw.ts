@@ -5,7 +5,7 @@
 import type { AdapterType } from '../types'
 import type { ActivityKind } from './activity'
 import type { OfficeAssets } from './assets'
-import { ALL_DESKS, COLS, FLOOR_ITEMS, inCeoRoom, isWall, PARTITION_X, ROWS, TILE, WALL_DECOR, type Furniture } from './map'
+import { ALL_DESKS, COLS, FLOOR_ITEMS, inCeoRoom, isWall, PARTITION_X, ROWS, RUGS, sizeOf, TILE, WALL_DECOR, type Furniture, type Rug } from './map'
 
 type Ctx = CanvasRenderingContext2D
 
@@ -81,6 +81,40 @@ export function drawBackground(ctx: Ctx, assets: OfficeAssets) {
     }
   }
   for (const item of WALL_DECOR) drawFurniture(ctx, assets, item, 0)
+  for (const rug of RUGS) if (!override(ctx, assets, 'rug', rug.x * TILE, (rug.y + 1) * TILE)) drawRug(ctx, rug)
+}
+
+/** 3~5칸 너비, 5칸 높이의 픽셀 글자 (#이 칠해진 칸) */
+const FONT: Record<string, string[]> = {
+  W: ['#...#', '#...#', '#.#.#', '#.#.#', '.#.#.'],
+  E: ['###', '#..', '##.', '#..', '###'],
+  L: ['#..', '#..', '#..', '#..', '###'],
+  C: ['.##', '#..', '#..', '#..', '.##'],
+  O: ['.#.', '#.#', '#.#', '#.#', '.#.'],
+  M: ['#...#', '##.##', '#.#.#', '#...#', '#...#'],
+}
+
+function pixelText(ctx: Ctx, text: string, cx: number, y: number, color: string) {
+  const glyphs = [...text].map((ch) => FONT[ch] ?? ['...', '...', '...', '...', '...'])
+  const width = glyphs.reduce((sum, g) => sum + g[0].length, 0) + glyphs.length - 1
+  let x = Math.round(cx - width / 2)
+  for (const g of glyphs) {
+    g.forEach((row, gy) => {
+      for (let gx = 0; gx < row.length; gx++) if (row[gx] === '#') r(ctx, x + gx, y + gy, 1, 1, color)
+    })
+    x += g[0].length + 1
+  }
+}
+
+/** 글자가 들어간 바닥 카펫 */
+function drawRug(ctx: Ctx, rug: Rug) {
+  const x = rug.x * TILE + 1
+  const y = rug.y * TILE + 2
+  const w = rug.w * TILE - 2
+  r(ctx, x, y, w, 12, '#e8c65a')
+  r(ctx, x + 1, y + 1, w - 2, 10, '#9c3b4a')
+  r(ctx, x + 2, y + 2, w - 4, 8, '#8a3241')
+  pixelText(ctx, rug.text, x + w / 2, y + 4, '#fff5e1')
 }
 
 // ---------- 가구 ----------
@@ -110,7 +144,7 @@ function plant(ctx: Ctx, x: number, bottom: number) {
 
 function drawFurnitureItem(ctx: Ctx, f: Furniture, frame: number) {
   const x = f.x * TILE
-  const bottom = (f.y + 1) * TILE
+  const bottom = (f.y + sizeOf(f).h) * TILE
   switch (f.kind) {
     case 'bookshelf':
       return bookshelf(ctx, x, f.y * TILE)
@@ -160,11 +194,105 @@ function drawFurnitureItem(ctx: Ctx, f: Furniture, frame: number) {
     }
     case 'table': {
       const w = f.w * TILE
-      r(ctx, x + 2, bottom - 10, w - 4, 6, '#8a5a33')
-      r(ctx, x + 2, bottom - 10, w - 4, 1, '#a46c40')
+      const h = (f.h ?? 1) * TILE
+      // 위에서 내려다본 상판과 앞쪽 다리
+      const top = bottom - h + 4
+      r(ctx, x + 2, top, w - 4, h - 10, '#8a5a33')
+      r(ctx, x + 2, top, w - 4, 1, '#a46c40')
+      r(ctx, x + 2, bottom - 6, w - 4, 2, '#6e4527')
       r(ctx, x + 4, bottom - 4, 2, 4, '#5e3c20')
       r(ctx, x + w - 6, bottom - 4, 2, 4, '#5e3c20')
-      r(ctx, x + 12, bottom - 13, 4, 3, '#f5f5f5')
+      if (f.shrimp) {
+        shrimpPlate(ctx, x + w / 2 - 5, top + (h - 10) / 2)
+        soju(ctx, x + w / 2 + 6, top + (h - 10) / 2)
+      }
+      else r(ctx, x + 12, bottom - 13, 4, 3, '#f5f5f5')
+      return
+    }
+    case 'sofaSide': {
+      const h = f.h * TILE
+      const top = bottom - h
+      // 등받이는 바라보는 쪽의 반대편에 둔다
+      const backX = f.facing === 'right' ? x + 1 : x + 10
+      const seatX = f.facing === 'right' ? x + 5 : x + 1
+      r(ctx, seatX, top + 3, 10, h - 5, '#c46a7d')
+      r(ctx, backX, top + 1, 5, h - 2, '#a9566a')
+      r(ctx, seatX, top + 1, 10, 3, '#a9566a')
+      r(ctx, seatX, bottom - 4, 10, 3, '#a9566a')
+      r(ctx, seatX, top + h / 2, 10, 1, '#a9566a')
+      return
+    }
+    case 'massage': {
+      // 등받이가 높은 안마의자와 발받침, 팔걸이의 조작판
+      r(ctx, x + 2, bottom - 22, 12, 12, '#3b3f4a')
+      r(ctx, x + 3, bottom - 21, 10, 2, '#555b69')
+      r(ctx, x + 4, bottom - 18, 8, 7, '#2c2f37')
+      r(ctx, x + 3, bottom - 11, 10, 5, '#4a4f5c')
+      r(ctx, x + 1, bottom - 14, 2, 8, '#3b3f4a')
+      r(ctx, x + 13, bottom - 14, 2, 8, '#3b3f4a')
+      r(ctx, x + 13, bottom - 14, 2, 2, frame % 2 ? '#5aa9e6' : '#2e86c1')
+      r(ctx, x + 5, bottom - 6, 6, 5, '#2c2f37')
+      r(ctx, x + 5, bottom - 6, 6, 1, '#555b69')
+      return
+    }
+    case 'pool': {
+      const w = f.w * TILE
+      const h = f.h * TILE
+      const top = bottom - h + 2
+      // 나무 테두리, 초록 천, 구멍 여섯 개
+      r(ctx, x + 1, top, w - 2, h - 6, '#6b4423')
+      r(ctx, x + 4, top + 3, w - 8, h - 12, '#2e8b57')
+      r(ctx, x + 5, top + 4, w - 10, 1, '#36a165')
+      for (const px of [x + 3, x + w / 2 - 1, x + w - 5]) {
+        r(ctx, px, top + 2, 2, 2, '#111')
+        r(ctx, px, top + h - 11, 2, 2, '#111')
+      }
+      r(ctx, x + 3, bottom - 4, 3, 4, '#4a2e17')
+      r(ctx, x + w - 6, bottom - 4, 3, 4, '#4a2e17')
+      // 공과 큐대
+      const balls: [number, number, string][] = [
+        [30, 8, '#f5f5f5'], [12, 9, '#f1c40f'], [14, 12, '#c0392b'], [16, 9, '#2e86c1'], [16, 13, '#111'], [36, 14, '#8e44ad'],
+      ]
+      for (const [bx, by, color] of balls) r(ctx, x + bx, top + by, 2, 2, color)
+      for (let i = 0; i < 14; i++) r(ctx, x + 22 + i, top + 18 - Math.floor(i / 3), 1, 1, i < 3 ? '#e8d5a8' : '#a0673a')
+      return
+    }
+    case 'armchair': {
+      // 두 칸 가운데에 놓인 CEO용 1인 소파 (등받이는 위쪽, 앉으면 탁자를 본다)
+      const x0 = x + 7
+      r(ctx, x0 + 1, bottom - 17, 16, 9, '#7a2e3a')
+      r(ctx, x0 + 1, bottom - 17, 16, 1, '#e8c65a')
+      r(ctx, x0 + 3, bottom - 9, 12, 7, '#9c3b4a')
+      r(ctx, x0, bottom - 12, 3, 10, '#7a2e3a')
+      r(ctx, x0 + 15, bottom - 12, 3, 10, '#7a2e3a')
+      r(ctx, x0, bottom - 12, 3, 1, '#e8c65a')
+      r(ctx, x0 + 15, bottom - 12, 3, 1, '#e8c65a')
+      r(ctx, x0 + 8, bottom - 15, 2, 2, '#e8c65a')
+      return
+    }
+    case 'cafe': {
+      const w = f.w * TILE
+      // 카운터 (상판, 앞판)
+      r(ctx, x, bottom - 13, w, 13, '#6b4423')
+      r(ctx, x, bottom - 13, w, 3, '#c8925d')
+      r(ctx, x + 2, bottom - 8, w - 4, 1, '#55361c')
+      // 에스프레소 머신
+      r(ctx, x + 3, bottom - 24, 12, 11, '#b8c0c8')
+      r(ctx, x + 3, bottom - 24, 12, 2, '#d8dee4')
+      r(ctx, x + 5, bottom - 19, 8, 3, '#3a3a3a')
+      r(ctx, x + 8, bottom - 16, 2, 2, '#6b4423')
+      r(ctx, x + 12, bottom - 22, 2, 2, '#e05050')
+      // 컵들
+      for (let i = 0; i < 3; i++) {
+        r(ctx, x + 19 + i * 5, bottom - 17, 4, 4, '#f5f5f5')
+        r(ctx, x + 19 + i * 5, bottom - 17, 4, 1, '#7a4b2a')
+      }
+      // 케이크 진열장
+      r(ctx, x + 35, bottom - 22, 11, 9, '#cfe8f2')
+      r(ctx, x + 36, bottom - 17, 4, 3, '#f2d1a8')
+      r(ctx, x + 36, bottom - 18, 4, 1, '#e86a8a')
+      r(ctx, x + 41, bottom - 17, 4, 3, '#5a3a22')
+      r(ctx, x + 35, bottom - 22, 11, 1, '#9fc4d4')
       return
     }
     case 'sofa': {
@@ -179,9 +307,44 @@ function drawFurnitureItem(ctx: Ctx, f: Furniture, frame: number) {
   }
 }
 
+/** 접시에 담긴 새우 두 마리. (cx, cy)는 접시 가운데 */
+function shrimpPlate(ctx: Ctx, cx: number, cy: number) {
+  const x = Math.round(cx - 7)
+  const y = Math.round(cy - 4)
+  r(ctx, x + 1, y, 12, 8, '#f5f5f5')
+  r(ctx, x, y + 1, 14, 6, '#f5f5f5')
+  r(ctx, x + 1, y + 6, 12, 1, '#d9d9d9')
+  // 구부러진 새우 몸통, 꼬리, 눈
+  const shrimp = (sx: number, sy: number) => {
+    r(ctx, sx, sy, 4, 1, '#f08a5d')
+    r(ctx, sx + 3, sy + 1, 1, 2, '#f08a5d')
+    r(ctx, sx, sy + 1, 1, 1, '#e86a4a')
+    r(ctx, sx + 1, sy + 3, 3, 1, '#f08a5d')
+    r(ctx, sx, sy + 3, 1, 1, '#c0392b')
+    r(ctx, sx + 1, sy + 1, 2, 2, '#fbc3a3')
+  }
+  shrimp(x + 2, y + 2)
+  shrimp(x + 8, y + 2)
+}
+
+/** 소주병과 소주잔. (x, cy)는 병의 왼쪽, 세로 가운데 */
+function soju(ctx: Ctx, x: number, cy: number) {
+  const bx = Math.round(x)
+  const by = Math.round(cy - 6)
+  r(ctx, bx + 1, by, 2, 2, '#1f7a3e')
+  r(ctx, bx + 1, by - 1, 2, 1, '#2e9e5b')
+  r(ctx, bx, by + 2, 4, 9, '#2e9e5b')
+  r(ctx, bx, by + 2, 1, 9, '#5cc487')
+  r(ctx, bx, by + 5, 4, 3, '#e8f5ec')
+  r(ctx, bx + 1, by + 6, 2, 1, '#2e9e5b')
+  // 잔
+  r(ctx, bx + 6, by + 7, 3, 4, '#eef6f8')
+  r(ctx, bx + 6, by + 8, 3, 2, '#d6ecf2')
+}
+
 function drawFurniture(ctx: Ctx, assets: OfficeAssets, f: Furniture, frame: number) {
   // 벽 장식은 벽 맨 아래(2번째 줄 아래)에 맞춘다
-  const bottom = f.y < 2 ? 2 * TILE : (f.y + 1) * TILE
+  const bottom = f.y < 2 ? 2 * TILE : (f.y + sizeOf(f).h) * TILE
   if (!override(ctx, assets, f.kind, f.x * TILE, bottom)) drawFurnitureItem(ctx, f, frame)
 }
 
@@ -367,7 +530,7 @@ export type Drawable = { baseY: number; draw: (ctx: Ctx) => void }
 
 /** 바닥 위의 가구와 책상. 캐릭터와 함께 baseY 순서로 그린다 */
 export function sceneItems(assets: OfficeAssets, screenOn: (deskIndex: number) => boolean, frame: number): Drawable[] {
-  const items: Drawable[] = FLOOR_ITEMS.map((f) => ({ baseY: (f.y + 1) * TILE - 1, draw: (ctx) => drawFurniture(ctx, assets, f, frame) }))
+  const items: Drawable[] = FLOOR_ITEMS.map((f) => ({ baseY: (f.y + sizeOf(f).h) * TILE - 1, draw: (ctx) => drawFurniture(ctx, assets, f, frame) }))
   ALL_DESKS.forEach((d, i) => {
     const x = d.x * TILE
     items.push({ baseY: (d.y + 1) * TILE - 1, draw: (ctx) => desk(ctx, assets, x, d.y * TILE, screenOn(i), frame) })

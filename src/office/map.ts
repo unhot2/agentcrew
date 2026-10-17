@@ -4,8 +4,8 @@ export const TILE = 16
 export const COLS = 26
 export const ROWS = 16
 
-/** 업무 공간과 휴게실을 나누는 벽의 x. 문은 DOOR_ROWS 줄에 있다 */
-export const PARTITION_X = 16
+/** 업무 공간과 휴게실을 나누는 벽의 x (화면 절반). 문은 DOOR_ROWS 줄에 있다 */
+export const PARTITION_X = 13
 const DOOR_ROWS = [6, 7]
 
 export type Point = { x: number; y: number }
@@ -13,7 +13,7 @@ export type Point = { x: number; y: number }
 /** 책상은 가로 두 칸이고, 바로 아래 칸이 의자(앉는 자리)다 */
 export type Desk = { x: number; y: number; seat: Point }
 
-const DESK_XS = [1, 5, 9, 13]
+const DESK_XS = [1, 4, 7, 10]
 const DESK_YS = [4, 8, 12]
 
 export const DESKS: Desk[] = DESK_YS.flatMap((y) => DESK_XS.map((x) => ({ x, y, seat: { x, y: y + 1 } })))
@@ -25,38 +25,98 @@ export const CEO_DESK: Desk = { x: 22, y: 3, seat: { x: 22, y: 4 } }
 /** 일반 책상 뒤에 CEO 책상을 붙인 전체 목록. CEO 책상의 번호는 DESKS.length */
 export const ALL_DESKS: Desk[] = [...DESKS, CEO_DESK]
 
+/** 벽에 붙은 표지판. 글자는 키운 화면에 그려야 읽을 수 있어서 그림과 따로 둔다 */
+export type Sign = { x: number; y: number; w: number; text: string; color: string; bg: string }
+
+export const SIGNS: Sign[] = [
+  { x: 14, y: 0, w: 3, text: 'CAFE', color: '#fff5e1', bg: '#6b4423' },
+  // 업무 공간 문 바로 위 칸막이 벽
+  { x: PARTITION_X, y: DOOR_ROWS[0] - 1, w: 1, text: '개발팀', color: '#ffffff', bg: '#2e6da4' },
+  { x: CEO_DOOR_X - 2, y: CEO_ROOM.bottom + 1, w: 2, text: 'CEO', color: '#3a2a0a', bg: '#e8c65a' },
+  { x: CEO_DOOR_X + 1, y: CEO_ROOM.bottom + 1, w: 2, text: '안주영 출입금지', color: '#ffffff', bg: '#c0392b' },
+]
+
+/** w, h는 차지하는 칸 수 (h는 기본 1) */
 export type Furniture =
   | { kind: 'bookshelf' | 'boxes' | 'clock' | 'painting'; x: number; y: number }
-  | { kind: 'plant' | 'cooler' | 'fridge' | 'counter' | 'table' | 'sofa'; x: number; y: number; w: number }
+  | { kind: 'plant' | 'cooler' | 'fridge' | 'counter' | 'sofa' | 'cafe'; x: number; y: number; w: number; h?: number }
+  | { kind: 'table'; x: number; y: number; w: number; h?: number; shrimp?: boolean }
+  /** 옆모습 소파. facing은 앉은 사람이 바라보는 쪽 */
+  | { kind: 'sofaSide'; x: number; y: number; w: 1; h: number; facing: 'left' | 'right' }
+  /** 1인용 소파. 두 칸을 차지하고 가운데에 하나 앉는다. 앉은 사람은 아래(탁자 쪽)를 본다 */
+  | { kind: 'armchair'; x: number; y: number; w: 2 }
+  /** 안마의자. 앉으면 몸이 떨린다 */
+  | { kind: 'massage'; x: number; y: number; w: 1 }
+  | { kind: 'pool'; x: number; y: number; w: 3; h: 2 }
+
+export const sizeOf = (f: Furniture) => ({ w: 'w' in f ? f.w : 1, h: 'h' in f ? (f.h ?? 1) : 1 })
 
 /** 벽에 붙은 장식은 막지 않고, 바닥에 놓인 가구는 지나갈 수 없다 */
 export const WALL_DECOR: Furniture[] = [
   { kind: 'bookshelf', x: 2, y: 0 },
-  { kind: 'bookshelf', x: 6, y: 0 },
-  { kind: 'bookshelf', x: 10, y: 0 },
-  { kind: 'clock', x: 14, y: 0 },
+  { kind: 'bookshelf', x: 7, y: 0 },
+  { kind: 'clock', x: 11, y: 0 },
   { kind: 'clock', x: 18, y: 0 },
   { kind: 'painting', x: 22, y: 0 },
   { kind: 'bookshelf', x: 24, y: 0 },
 ]
 
+/** 바닥에 깔린 것. 그 위로 걸어 다닐 수 있다 */
+export type Rug = { x: number; y: number; w: number; text: string }
+
+export const RUGS: Rug[] = [{ x: 14, y: 3, w: 3, text: 'WELCOME' }]
+
 export const FLOOR_ITEMS: Furniture[] = [
   { kind: 'plant', x: 0, y: 2, w: 1 },
-  { kind: 'boxes', x: 14, y: 2 },
-  { kind: 'plant', x: 15, y: 15, w: 1 },
+  { kind: 'boxes', x: 12, y: 2 },
+  { kind: 'plant', x: 12, y: 15, w: 1 },
+  // 휴게실: 왼쪽 위 카페, 가운데 양옆 소파와 탁자
+  { kind: 'cafe', x: 14, y: 2, w: 3 },
   { kind: 'plant', x: 17, y: 2, w: 1 },
   { kind: 'cooler', x: 18, y: 2, w: 1 },
   { kind: 'fridge', x: 19, y: 2, w: 1 },
-  { kind: 'counter', x: 23, y: 9, w: 2 },
-  { kind: 'table', x: 20, y: 11, w: 2 },
-  { kind: 'sofa', x: 19, y: 13, w: 4 },
+  { kind: 'armchair', x: 17, y: 9, w: 2 },
+  { kind: 'sofaSide', x: 16, y: 10, w: 1, h: 2, facing: 'right' },
+  { kind: 'table', x: 17, y: 10, w: 2, h: 2, shrimp: true },
+  { kind: 'sofaSide', x: 19, y: 10, w: 1, h: 2, facing: 'left' },
+  { kind: 'plant', x: 14, y: 15, w: 1 },
+  // 휴게실 오른쪽: 안마의자 두 개, 당구대
+  { kind: 'massage', x: 24, y: 9, w: 1 },
+  { kind: 'massage', x: 25, y: 9, w: 1 },
+  { kind: 'pool', x: 21, y: 13, w: 3, h: 2 },
   // CEO방
   { kind: 'plant', x: 21, y: 2, w: 1 },
   { kind: 'plant', x: 25, y: 2, w: 1 },
   { kind: 'sofa', x: 24, y: 6, w: 2 },
   { kind: 'plant', x: 25, y: 15, w: 1 },
-  { kind: 'plant', x: 17, y: 15, w: 1 },
 ]
+
+/**
+ * 끌어다 놓으면 앉을 수 있는 자리. x, y는 칸, fx, fy는 앉은 사람의 발 위치(픽셀),
+ * baseY는 소파보다 나중에 그려지도록 하는 그리기 순서 값
+ */
+export type Seat = { x: number; y: number; facing: 'down' | 'left' | 'right'; fx: number; fy: number; baseY: number; massage?: boolean }
+
+export const SEATS: Seat[] = FLOOR_ITEMS.flatMap((f): Seat[] => {
+  const bottom = (f.y + sizeOf(f).h) * TILE
+  if (f.kind === 'sofa') {
+    return Array.from({ length: f.w }, (_, i) => ({ x: f.x + i, y: f.y, facing: 'down', fx: (f.x + i) * TILE + 8, fy: f.y * TILE + 12, baseY: bottom }))
+  }
+  if (f.kind === 'massage') return [{ x: f.x, y: f.y, facing: 'down', fx: f.x * TILE + 8, fy: f.y * TILE + 12, baseY: bottom, massage: true }]
+  if (f.kind === 'armchair') return [{ x: f.x, y: f.y, facing: 'down', fx: f.x * TILE + TILE, fy: f.y * TILE + 12, baseY: bottom }]
+  if (f.kind === 'sofaSide') {
+    const fx = f.x * TILE + (f.facing === 'right' ? 10 : 6)
+    return Array.from({ length: f.h }, (_, j) => ({ x: f.x, y: f.y + j, facing: f.facing, fx, fy: (f.y + j) * TILE + 12, baseY: bottom }))
+  }
+  return []
+})
+
+/** 그 칸에 놓으면 앉는 자리. 1인용 소파는 두 칸 어디에 놓아도 앉는다 */
+export function seatAt(p: Point): Seat | undefined {
+  return SEATS.find((s) => s.y === p.y && (s.x === p.x || (isArmchairTile(s, p))))
+}
+const isArmchairTile = (s: Seat, p: Point) =>
+  FLOOR_ITEMS.some((f) => f.kind === 'armchair' && f.x === s.x && f.y === s.y && p.x === f.x + 1)
 
 export const inCeoRoom = (x: number, y: number) => x >= CEO_ROOM.x && x <= CEO_ROOM.right && y >= CEO_ROOM.y && y <= CEO_ROOM.bottom
 const ceoWall = (x: number, y: number) =>
@@ -75,8 +135,8 @@ for (const d of ALL_DESKS) {
   blocked.add(key(d.x + 1, d.y))
 }
 for (const f of FLOOR_ITEMS) {
-  const w = 'w' in f ? f.w : 1
-  for (let i = 0; i < w; i++) blocked.add(key(f.x + i, f.y))
+  const { w, h } = sizeOf(f)
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) blocked.add(key(f.x + i, f.y + j))
 }
 
 export const walkable = (x: number, y: number) => x >= 0 && y >= 0 && x < COLS && y < ROWS && !blocked.has(key(x, y))
@@ -90,6 +150,28 @@ for (let y = 3; y < ROWS; y++) {
     if (inCeoRoom(x, y)) CEO_SPOTS.push({ x, y })
     else if (inLounge(x, y)) LOUNGE_SPOTS.push({ x, y })
   }
+}
+
+/** 가장 가까운 걸을 수 있는 칸. 가구나 벽 위에 놓으면 그 옆 칸으로 옮긴다 */
+export function nearestWalkable(p: Point): Point | null {
+  const x = Math.min(COLS - 1, Math.max(0, p.x))
+  const y = Math.min(ROWS - 1, Math.max(0, p.y))
+  for (let r = 0; r < Math.max(COLS, ROWS); r++) {
+    let best: Point | null = null
+    let bestDist = Infinity
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || !walkable(x + dx, y + dy)) continue
+        const dist = dx * dx + dy * dy
+        if (dist < bestDist) {
+          best = { x: x + dx, y: y + dy }
+          bestDist = dist
+        }
+      }
+    }
+    if (best) return best
+  }
+  return null
 }
 
 /** 다른 사람 책상에 일을 전하러 갈 때 서는 자리 (의자 옆) */

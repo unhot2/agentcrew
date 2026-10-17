@@ -53,7 +53,13 @@ manifest에 없는 그림(예: 컴퓨터)은 직접 그린 그림이 그대로 �
 | `bookshelf` | 2×2 | 벽 책장 |
 | `clock`, `painting` | – | 벽 시계, 그림 액자 |
 | `boxes`, `plant`, `cooler`, `fridge` | 1×1 | 바닥 소품 |
-| `counter`, `table` | 2×1 | 조리대, 탁자 |
+| `counter` | 2×1 | 조리대 |
+| `table` | 2×2 | 휴게실 탁자 (새우 접시 포함) |
+| `cafe` | 3×1 | 카페 카운터 |
+| `sofaSide` | 1×2 | 탁자 양옆의 옆모습 소파 |
+| `armchair` | 2×1 | 탁자 위쪽의 CEO석 1인용 소파 |
+| `massage` | 1×1 | 안마의자 |
+| `pool` | 3×2 | 당구대 |
 | `sofa` | 4×1 | 소파 |
 | `desk` | 2×1 | 책상 |
 | `monitorOn`, `monitorOff` | – | 켜진/꺼진 모니터 (책상 위) |
