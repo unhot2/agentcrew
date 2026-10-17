@@ -7,7 +7,7 @@ manifest에 없는 그림(예: 컴퓨터)은 직접 그린 그림이 그대로 �
 ## 지금 쓰는 에셋
 
 - `MetroCity/`: [MetroCity - Free Top Down Character Pack](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack) (JIK-A-4, CC0)
-  - 시트 한 줄에 32×32 프레임 24개: 앞(0~5), 왼쪽(6~11), 뒤(12~17), 오른쪽(18~23)
+  - 시트 한 줄에 32×32 프레임 24개: 앞(0~5), 오른쪽(6~11), 뒤(12~17), 왼쪽(18~23)
   - `Character Model.png`의 줄은 피부색(6), `Hairs.png`의 줄은 머리 모양(8), 옷은 파일마다 한 줄
 
 ## manifest.json 형식
@@ -27,7 +27,7 @@ manifest에 없는 그림(예: 컴퓨터)은 직접 그린 그림이 그대로 �
       ],
       "frameW": 32,
       "frameH": 32,
-      "start": { "down": 0, "left": 6, "up": 12, "right": 18 },
+      "start": { "down": 0, "left": 18, "up": 12, "right": 6 },
       "frames": 6,
       "idle": 0
     }
