@@ -445,11 +445,21 @@ export function OfficeView({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
                 onMouseLeave={() => setHovered(null)}
                 onClick={() => open(a.id)}
               >
-                <span className="office-swatch" style={{ background: paletteFor(a.id, a.adapter.type).shirt }} aria-hidden />
-                <span className="office-roster-name">{a.name || '이름 없음'}</span>
-                <span className="muted">
-                  {a.title || adapterLabel(a.adapter.type)} · {activity.label}
-                  {activity.task ? ` · ${activity.task.title}` : ''}
+                {/* 사이드바 점과 같은 상태 색. 실행 중 오류를 만나면 빨간색 */}
+                <span
+                  className={`office-swatch status-${activity.kind === 'error' ? 'error' : a.status}`}
+                  title={activity.label}
+                  aria-hidden
+                />
+                <span className="office-roster-text">
+                  <span className="office-roster-line">
+                    <span className="office-roster-name">{a.name || '이름 없음'}</span>
+                    <span className="muted">
+                      {a.title || adapterLabel(a.adapter.type)} · {activity.label}
+                    </span>
+                  </span>
+                  {/* 무슨 작업을 하는지는 아랫줄에 */}
+                  {activity.task && <span className="muted office-roster-task">{activity.task.title}</span>}
                 </span>
               </button>
             </li>
