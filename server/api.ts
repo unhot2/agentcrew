@@ -15,7 +15,7 @@ import type {
 } from '../src/types.ts'
 import type { RunEvent } from '../src/runTypes.ts'
 import { setTaskPrefix, taskKey, taskPrompt } from '../src/taskStore.ts'
-import { DELEGATION_GUIDE, checkParentDone, hasTeam, issueGrant, revokeGrant } from './delegation.ts'
+import { DELEGATION_GUIDE, NO_DELEGATION_GUIDE, checkParentDone, hasTeam, issueGrant, revokeGrant } from './delegation.ts'
 import { startRun, validate } from './runner.ts'
 import { isEmpty, log, persist, state, type State } from './db.ts'
 import { connectorEnv, notify, testConnector } from './notify.ts'
@@ -338,14 +338,15 @@ const SOURCE_LABEL: Record<RunSource, string> = {
   approval: '승인 후 실행',
 }
 
-/** 에이전트 지시문 뒤에 배정된 스킬 내용과, 위임할 수 있으면 위임 안내를 붙인다 */
-function systemPromptFor(agent: Agent, canDelegate: boolean) {
+/** 에이전트 지시문 뒤에 배정된 스킬 내용과, 팀이 있으면 위임 안내(위임 금지면 직접 하라는 안내)를 붙인다 */
+function systemPromptFor(agent: Agent, delegation: 'allowed' | 'forbidden' | null) {
   const parts = [agent.instructions.trim()]
   for (const id of agent.skillIds ?? []) {
     const skill = state.skills.find((s) => s.id === id)
     if (skill?.content.trim()) parts.push(`## 스킬: ${skill.name}\n${skill.content.trim()}`)
   }
-  if (canDelegate) parts.push(DELEGATION_GUIDE)
+  if (delegation === 'allowed') parts.push(DELEGATION_GUIDE)
+  if (delegation === 'forbidden') parts.push(NO_DELEGATION_GUIDE)
   return parts.filter(Boolean).join('\n\n')
 }
 
@@ -416,9 +417,11 @@ export function runTask(taskId: string, source: RunSource = 'manual'): TaskRun {
   }
 
   // 팀이 있는 에이전트에게만 위임 도구를 준다. 작업에서 위임을 막았으면 주지 않는다. 토큰은 이 실행이 끝나면 버린다
-  const delegation = hasTeam(agent.id) && !task.noDelegation ? issueGrant({ runId: '', agentId: agent.id, taskId }) : null
+  const team = hasTeam(agent.id)
+  const delegation = team && !task.noDelegation ? issueGrant({ runId: '', agentId: agent.id, taskId }) : null
+  const guide = !team ? null : delegation ? 'allowed' : 'forbidden'
   // 이벤트는 모두 비동기로 오므로 id를 바로 채워 넣어도 순서가 꼬이지 않는다
-  const run = startRun(runner, prompt, onEvent, { systemPrompt: systemPromptFor(agent, !!delegation), env: connectorEnv(), delegation })
+  const run = startRun(runner, prompt, onEvent, { systemPrompt: systemPromptFor(agent, guide), env: connectorEnv(), delegation })
   taskRun.id = run.id
   task.runs.push(taskRun)
   task.status = 'in_progress'
