@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type ServerState } from './api'
+import { askConfirm } from './components/ConfirmDialog'
 import { createAgent } from './store'
 import type { Agent } from './types'
 
@@ -48,16 +49,16 @@ export function useAgents(agents: Agent[], setList: SetList, settings: ServerSta
     )
   }, [saved?.spentThisMonth, saved?.status, saved?.lastHeartbeatAt])
 
-  const confirmDiscard = () => !dirty || window.confirm('저장하지 않은 변경 사항을 버릴까요?')
+  const confirmDiscard = async () => !dirty || askConfirm('저장하지 않은 변경 사항을 버릴까요?', { confirmLabel: '버리기' })
 
-  const select = (id: string) => {
-    if (id === selectedId || !confirmDiscard()) return
+  const select = async (id: string) => {
+    if (id === selectedId || !(await confirmDiscard())) return
     setSelectedId(id)
     setDraft(agents.find((a) => a.id === id) ?? null)
   }
 
-  const add = () => {
-    if (!confirmDiscard()) return
+  const add = async () => {
+    if (!(await confirmDiscard())) return
     const agent = createAgent(settings.workspaceBase)
     setSelectedId(agent.id)
     setDraft(agent)
@@ -79,8 +80,8 @@ export function useAgents(agents: Agent[], setList: SetList, settings: ServerSta
     }
   }
 
-  const remove = () => {
-    if (!draft || !window.confirm(`'${draft.name}' 에이전트를 삭제할까요? 하위 에이전트는 상위로 올라갑니다.`)) return
+  const remove = async () => {
+    if (!draft || !(await askConfirm(`'${draft.name}' 에이전트를 삭제할까요? 하위 에이전트는 상위로 올라갑니다.`))) return
     const next = agents
       .filter((a) => a.id !== draft.id)
       .map((a) => (a.reportsTo === draft.id ? { ...a, reportsTo: draft.reportsTo } : a))

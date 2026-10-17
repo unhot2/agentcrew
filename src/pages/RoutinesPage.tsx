@@ -1,6 +1,7 @@
 import { IconTrash } from '@tabler/icons-react'
 import type { ServerState } from '../api'
 import { Field } from '../components/AdapterSettings'
+import { askConfirm } from '../components/ConfirmDialog'
 import { EmptyDetail, SimpleList } from '../components/SimpleList'
 import { PRIORITY_LABEL, PRIORITY_ORDER } from '../taskStore'
 import type { Routine, RoutineSchedule, TaskPriority } from '../types'
@@ -35,8 +36,8 @@ export function RoutinesPage({ data, selectedId, onSelect, onAdd, onChange, onDe
     dim: !r.enabled,
   }))
 
-  const remove = (r: Routine) => {
-    if (!window.confirm(`반복 업무 '${r.name || '이름 없음'}'을 삭제할까요? 이미 만든 작업은 남습니다.`)) return
+  const remove = async (r: Routine) => {
+    if (!(await askConfirm(`반복 업무 '${r.name || '이름 없음'}'을 삭제할까요? 이미 만든 작업은 남습니다.`))) return
     onDelete(r.id)
     onSelect(null)
   }

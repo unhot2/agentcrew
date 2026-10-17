@@ -1,4 +1,5 @@
 import type { ClaudeCheck } from '../components/AdapterSettings'
+import { askConfirm } from '../components/ConfirmDialog'
 import { TaskDetail } from '../components/TaskDetail'
 import { TaskList } from '../components/TaskList'
 import type { Agent, Project, Task } from '../types'
@@ -42,8 +43,8 @@ export function TasksPage(props: Props) {
     return null
   }
 
-  const remove = (t: Task) => {
-    if (!window.confirm(`작업 '${t.title || '제목 없음'}'을 삭제할까요? 실행 기록도 함께 지워집니다.`)) return
+  const remove = async (t: Task) => {
+    if (!(await askConfirm(`작업 '${t.title || '제목 없음'}'을 삭제할까요? 실행 기록도 함께 지워집니다.`))) return
     props.onDelete(t.id)
     onSelect(null)
   }

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { IconAlertTriangle, IconPlus, IconX } from '@tabler/icons-react'
 import { api, onApiError, type ServerState } from './api'
 import type { ClaudeCheck } from './components/AdapterSettings'
+import { ConfirmHost } from './components/ConfirmDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { PAGE_TITLE, PAGES, Sidebar, type Page } from './components/Sidebar'
 import { archiveLegacy, readLegacy } from './legacy'
@@ -117,28 +118,28 @@ function Workspace({ initial }: { initial: ServerState }) {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
-  const go = (next: Page) => {
+  const go = async (next: Page) => {
     if (next === page) return true
     // 에이전트 화면에서 저장하지 않은 편집이 있으면 떠나기 전에 확인한다
-    if (page === 'agents' && !agentState.confirmDiscard()) return false
+    if (page === 'agents' && !(await agentState.confirmDiscard())) return false
     if (page === 'agents') agentState.cancel()
     window.location.hash = `#/${next}`
     return true
   }
 
   const select = (p: Page) => (id: string | null) => setSelected((s) => ({ ...s, [p]: id }))
-  const open = (p: Page) => (id: string) => {
-    if (go(p)) select(p)(id)
+  const open = (p: Page) => async (id: string) => {
+    if (await go(p)) select(p)(id)
   }
-  const openAgent = (id: string) => {
-    if (go('agents')) agentState.select(id)
+  const openAgent = async (id: string) => {
+    if (await go('agents')) agentState.select(id)
   }
-  const addAgent = () => {
-    if (go('agents')) agentState.add()
+  const addAgent = async () => {
+    if (await go('agents')) agentState.add()
   }
 
-  const newTask = (projectId: string | null = null) => {
-    if (go('tasks')) select('tasks')(tasks.add({ ...createTask(data.tasks), projectId }, 'start'))
+  const newTask = async (projectId: string | null = null) => {
+    if (await go('tasks')) select('tasks')(tasks.add({ ...createTask(data.tasks), projectId }, 'start'))
   }
   const newProject = () => select('projects')(projects.add(createProject(data.projects)))
   const newGoal = () =>
@@ -357,6 +358,7 @@ function Workspace({ initial }: { initial: ServerState }) {
         )}
         <ErrorBoundary resetKey={page}>{pages[page]()}</ErrorBoundary>
       </div>
+      <ConfirmHost />
     </div>
   )
 }

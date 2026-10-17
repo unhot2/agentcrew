@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { IconBrandGithub, IconBrandSlack, IconTrash, IconWebhook } from '@tabler/icons-react'
 import { api, type ServerState } from '../api'
 import { Field } from '../components/AdapterSettings'
+import { askConfirm } from '../components/ConfirmDialog'
 import type { Connector, ConnectorType } from '../types'
 
 const META: Record<ConnectorType, { label: string; icon: typeof IconWebhook; secretLabel: string; placeholder: string; help: string }> = {
@@ -48,8 +49,8 @@ export function ConnectorsPage({ data, onAdd, onChange, onDelete }: Props) {
     }
   }
 
-  const remove = (c: Connector) => {
-    if (window.confirm(`${c.name} 연결을 삭제할까요? 저장한 토큰이나 주소도 지워집니다.`)) onDelete(c.id)
+  const remove = async (c: Connector) => {
+    if (await askConfirm(`${c.name} 연결을 삭제할까요? 저장한 토큰이나 주소도 지워집니다.`)) onDelete(c.id)
   }
 
   return (

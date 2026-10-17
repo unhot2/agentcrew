@@ -1,6 +1,7 @@
 import { IconTrash } from '@tabler/icons-react'
 import type { ServerState } from '../api'
 import { Field } from '../components/AdapterSettings'
+import { askConfirm } from '../components/ConfirmDialog'
 import { EmptyDetail, SimpleList } from '../components/SimpleList'
 import type { Skill } from '../types'
 
@@ -24,8 +25,8 @@ export function SkillsPage({ data, selectedId, onSelect, onAdd, onChange, onDele
     sub: `에이전트 ${usersOf(s.id).length}명이 사용`,
   }))
 
-  const remove = (s: Skill) => {
-    if (!window.confirm(`스킬 '${s.name || '이름 없음'}'을 삭제할까요? 이 스킬을 쓰던 에이전트에서도 빠집니다.`)) return
+  const remove = async (s: Skill) => {
+    if (!(await askConfirm(`스킬 '${s.name || '이름 없음'}'을 삭제할까요? 이 스킬을 쓰던 에이전트에서도 빠집니다.`))) return
     onDelete(s.id)
     onSelect(null)
   }

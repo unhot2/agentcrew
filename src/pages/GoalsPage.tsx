@@ -1,6 +1,7 @@
 import { IconTrash } from '@tabler/icons-react'
 import type { ServerState } from '../api'
 import { Field } from '../components/AdapterSettings'
+import { askConfirm } from '../components/ConfirmDialog'
 import { EmptyDetail, SimpleList } from '../components/SimpleList'
 import { PROJECT_STATUS_LABEL } from '../projectStore'
 import type { Goal, GoalStatus } from '../types'
@@ -41,8 +42,8 @@ export function GoalsPage({ data, selectedId, onSelect, onAdd, onChange, onDelet
     }
   })
 
-  const remove = (g: Goal) => {
-    if (!window.confirm(`목표 '${g.title || '제목 없음'}'을 삭제할까요? 연결된 프로젝트는 목표 없음으로 남습니다.`)) return
+  const remove = async (g: Goal) => {
+    if (!(await askConfirm(`목표 '${g.title || '제목 없음'}'을 삭제할까요? 연결된 프로젝트는 목표 없음으로 남습니다.`))) return
     onDelete(g.id)
     onSelect(null)
   }

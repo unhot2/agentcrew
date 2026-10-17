@@ -1,3 +1,4 @@
+import { askConfirm } from '../components/ConfirmDialog'
 import { ProjectDetail } from '../components/ProjectDetail'
 import { ProjectList } from '../components/ProjectList'
 import type { Agent, Goal, Project, Task } from '../types'
@@ -20,10 +21,10 @@ export function ProjectsPage(props: Props) {
   const { projects, tasks, agents, goals, selectedId, onSelect, onAdd } = props
   const project = projects.find((p) => p.id === selectedId) ?? null
 
-  const remove = (p: Project) => {
+  const remove = async (p: Project) => {
     const count = tasks.filter((t) => t.projectId === p.id).length
     const note = count ? ` 작업 ${count}개는 지워지지 않고 프로젝트 없음으로 남습니다.` : ''
-    if (!window.confirm(`프로젝트 '${p.name || '이름 없음'}'을 삭제할까요?${note}`)) return
+    if (!(await askConfirm(`프로젝트 '${p.name || '이름 없음'}'을 삭제할까요?${note}`))) return
     props.onDelete(p.id)
   }
 
