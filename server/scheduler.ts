@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Routine, Task } from '../src/types.ts'
 import { taskKey } from '../src/taskStore.ts'
-import { requestRun } from './api.ts'
+import { requestRun, retryWaitingParents } from './api.ts'
 import { log, persist, state } from './db.ts'
 import { RUNNABLE } from './runner.ts'
 import { nextRunAt } from './schedule.ts'
@@ -66,6 +66,7 @@ function tick() {
     if (routine.enabled && routine.nextRunAt && Date.parse(routine.nextRunAt) <= at) fireRoutine(routine, at)
   }
   heartbeat(at)
+  retryWaitingParents()
 }
 
 export function startScheduler() {

@@ -19,7 +19,6 @@ import {
   APPROVAL_GUIDE,
   DELEGATION_GUIDE,
   NO_DELEGATION_GUIDE,
-  checkParentDone,
   hasTeam,
   issueGrant,
   lastResult,
@@ -156,7 +155,7 @@ export function putTask(id: string, body: Task) {
     const key = taskKey(existing)
     if (before.status !== existing.status) {
       log('task', `${key} 상태를 ${existing.status}(으)로 바꿨습니다.`, { taskId: id })
-      if (existing.status === 'done' || existing.status === 'cancelled') checkParentDone(existing)
+      if (existing.status === 'done' || existing.status === 'cancelled') continueParentOf(existing)
     }
     if (before.assigneeId !== existing.assigneeId) {
       const who = existing.assigneeId ? agentName(existing.assigneeId) : '담당 없음'
@@ -338,13 +337,14 @@ export function artifactContent(id: string) {
 
 // ---------- 실행, 승인 ----------
 
-export type RunSource = 'manual' | 'heartbeat' | 'routine' | 'approval'
+export type RunSource = 'manual' | 'heartbeat' | 'routine' | 'approval' | 'subtasks'
 
 const SOURCE_LABEL: Record<RunSource, string> = {
   manual: '직접 실행',
   heartbeat: '하트비트',
   routine: '반복 업무',
   approval: '승인 후 실행',
+  subtasks: '하위 작업 완료 후 실행',
 }
 
 /** 에이전트 도구(MCP나 함수 호출)를 쓸 수 있는 어댑터. Hermes는 도구를 붙일 수 없다 */
@@ -437,9 +437,19 @@ export function runTask(taskId: string, source: RunSource = 'manual', followUp?:
       if (agentTools) revokeGrant(agentTools.token)
       taskRun.status = e.status
       const current = state.tasks.find((t) => t.id === taskId)
+      // 하위 작업에 맡겨 둔 일이 남아 있으면 진행 중으로 두고, 끝나면 이어서 실행한다
+      let resumeNow = false
       if (current && e.status === 'completed' && current.status === 'in_progress') {
-        current.status = 'in_review'
-        current.updatedAt = now()
+        const children = subtasksOf(current)
+        if (children.some((c) => !subtaskFinished(c))) {
+          log('task', `${key}은 맡긴 하위 작업이 끝나면 이어서 진행합니다.`, { taskId, agentId: agent.id })
+        } else if (children.some((c) => c.updatedAt >= taskRun.startedAt)) {
+          // 이 실행 중에 맡긴 하위 작업이 벌써 끝났으면 바로 이어서 진행한다
+          resumeNow = true
+        } else {
+          current.status = 'in_review'
+          current.updatedAt = now()
+        }
       }
       if (owner && owner.status === 'running') owner.status = 'idle'
       const result = { completed: '완료', failed: '실패', stopped: '중지', running: '실행 중' }[e.status]
@@ -448,6 +458,13 @@ export function runTask(taskId: string, source: RunSource = 'manual', followUp?:
         agentId: agent.id,
       })
       notify(`run.${e.status}`, `${agent.name}: ${key} ${task.title} 실행 ${result}`, { taskId, agentId: agent.id })
+      // 실행 기록이 다 정리된 뒤에 다음 실행을 시작한다
+      if (current && e.status === 'completed') {
+        setTimeout(() => {
+          if (resumeNow) continueAfterSubtasks(current)
+          continueParentOf(current)
+        })
+      }
     }
     persist()
   }
@@ -471,6 +488,88 @@ export function runTask(taskId: string, source: RunSource = 'manual', followUp?:
     agentId: agent.id,
   })
   return taskRun
+}
+
+// ---------- 하위 작업이 끝난 뒤 이어서 진행 ----------
+
+function subtasksOf(task: Task) {
+  return state.tasks.filter((t) => t.parentTaskId === task.id)
+}
+
+/** 하위 작업이 끝났는지. 실행을 마쳐 검토 대기로 올라온 것도 끝난 것으로 본다 (검증은 상위 담당자가 한다) */
+function subtaskFinished(task: Task) {
+  const settled = task.status === 'done' || task.status === 'cancelled' || task.status === 'in_review'
+  return settled && !task.runs.some((r) => r.status === 'running')
+}
+
+/** 하위 작업을 맡겨 두고 결과를 기다리는 작업인지 */
+function waitingForSubtasks(task: Task) {
+  if (task.status !== 'in_progress' || task.runs.length === 0) return false
+  if (task.runs.some((r) => r.status === 'running')) return false
+  const children = subtasksOf(task)
+  return children.length > 0 && children.every(subtaskFinished)
+}
+
+/** 하위 작업 결과를 상위 담당자에게 넘기는 글 */
+function subtasksFollowUp(task: Task) {
+  const lines = subtasksOf(task).map((c) => {
+    const who = state.agents.find((a) => a.id === c.assigneeId)?.name ?? '담당 없음'
+    const result = lastResult(c, 1500)
+    const body = result ? `- 결과:\n${result}` : '- 결과: (남긴 요약 없음)'
+    return `### [${taskKey(c)}] ${c.title}\n- 담당: ${who} · 상태: ${c.status}\n${body}`
+  })
+  return [
+    '## 하위 작업 결과',
+    '맡긴 하위 작업이 모두 끝났습니다. 각 작업의 결과는 아래와 같습니다.',
+    ...lines,
+    '결과를 검증하고, 필요한 정리나 병합을 직접 마친 뒤 이 작업의 최종 결과를 보고하세요.',
+    '고칠 점이 있으면 create_task로 다시 맡기세요. 그 작업이 끝나면 다시 이어서 실행됩니다.',
+  ].join('\n\n')
+}
+
+/** 하위 작업이 모두 끝난 작업을 담당 에이전트가 이어서 진행하게 한다. 실행하지 못하면 다음 차례에 다시 시도한다 */
+export function continueAfterSubtasks(task: Task) {
+  if (task.status === 'done' || task.status === 'cancelled') return
+  if (task.runs.some((r) => r.status === 'running')) return
+  try {
+    runTask(task.id, 'subtasks', subtasksFollowUp(task))
+    stuckParents.delete(task.id)
+  } catch (err) {
+    // 담당 에이전트가 다른 일을 하는 중이면 진행 중으로 두고 스케줄러가 다시 시도한다
+    if (task.status !== 'in_progress') {
+      task.status = 'in_progress'
+      task.updatedAt = now()
+    }
+    // 같은 이유로 계속 실패해도 기록은 한 번만 남긴다
+    const message = (err as Error).message
+    if (stuckParents.get(task.id) !== message) {
+      stuckParents.set(task.id, message)
+      log('task', `${taskKey(task)}의 하위 작업이 끝났지만 아직 이어서 실행하지 못했습니다: ${message}`, { taskId: task.id })
+    }
+    persist()
+  }
+}
+
+/** 이어서 실행하지 못한 작업과 그 이유 (같은 기록을 반복해서 남기지 않으려고) */
+const stuckParents = new Map<string, string>()
+
+/** 하위 작업이 끝났을 때 상위 작업이 기다리던 마지막 결과면 상위 담당자를 깨운다 */
+export function continueParentOf(task: Task) {
+  const parent = state.tasks.find((t) => t.id === task.parentTaskId)
+  if (!parent || !waitingForSubtasks(parent)) return
+  log('task', `${taskKey(parent)}의 하위 작업이 모두 끝났습니다. 담당 에이전트가 결과를 정리합니다.`, { taskId: parent.id })
+  notify('task.subtasks_done', `${taskKey(parent)} ${parent.title}: 하위 작업 완료`, { taskId: parent.id })
+  continueAfterSubtasks(parent)
+}
+
+/** 스케줄러가 부른다. 담당자가 바빠서 이어가지 못한 작업을 다시 시도한다 */
+export function retryWaitingParents() {
+  for (const task of state.tasks) {
+    if (!waitingForSubtasks(task)) continue
+    const agent = state.agents.find((a) => a.id === task.assigneeId)
+    if (!agent || agent.status !== 'idle') continue
+    continueAfterSubtasks(task)
+  }
 }
 
 /** 승인이 필요한 에이전트인지. 모든 권한을 우회하는 모드는 항상 승인을 받는다 */

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import type { Agent, Task, TaskPriority } from '../src/types.ts'
-import { taskKey } from '../src/taskStore.ts'
+import { bracketTaskKeys, taskKey } from '../src/taskStore.ts'
 import { log, persist, state } from './db.ts'
 import { notify } from './notify.ts'
 
@@ -187,7 +187,8 @@ export async function callAgentTool(
   }
 
   if (name === 'create_task') {
-    const title = String(args.title ?? '').trim()
+    // 에이전트가 제목 앞에 붙이는 상위 작업 번호는 [AC-10]처럼 묶는다
+    const title = bracketTaskKeys(String(args.title ?? '').trim())
     const description = String(args.description ?? '').trim()
     const assignee = team.find((a) => a.id === String(args.assignee_id ?? ''))
     if (!title) return { text: '제목이 필요합니다.', isError: true }
@@ -233,19 +234,6 @@ export async function callAgentTool(
   }
 
   return { text: `알 수 없는 도구: ${name}`, isError: true }
-}
-
-/** 하위 작업이 모두 끝나면 상위 작업을 검토 대기로 올려 사람이 결과를 확인하게 한다 */
-export function checkParentDone(task: Task) {
-  if (!task.parentTaskId) return
-  const parent = state.tasks.find((t) => t.id === task.parentTaskId)
-  if (!parent || parent.status === 'done' || parent.status === 'cancelled') return
-  const children = state.tasks.filter((t) => t.parentTaskId === parent.id)
-  if (!children.every((t) => t.status === 'done' || t.status === 'cancelled')) return
-  parent.status = 'in_review'
-  parent.updatedAt = new Date().toISOString()
-  log('task', `${taskKey(parent)}의 하위 작업이 모두 끝났습니다. 결과를 검토하세요.`, { taskId: parent.id })
-  notify('task.subtasks_done', `${taskKey(parent)} ${parent.title}: 하위 작업 완료`, { taskId: parent.id })
 }
 
 const MCP_SERVER = fileURLToPath(new URL('./mcp-agentcrew.mjs', import.meta.url))
