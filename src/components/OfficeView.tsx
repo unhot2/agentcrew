@@ -3,7 +3,25 @@ import { adapterLabel } from '../adapters'
 import { activityOf, type Activity } from '../office/activity'
 import { EMPTY_ASSETS, loadOfficeAssets, type OfficeAssets } from '../office/assets'
 import { characterHeight, drawBackground, drawBubble, drawCharacter, paletteFor, sceneItems, type Dir, type Drawable } from '../office/draw'
-import { ALL_DESKS, CEO_SPOTS, COLS, DESKS, findPath, LOUNGE_SPOTS, nearestWalkable, ROWS, seatAt, SIGNS, TILE, visitSpot, type Point, type Seat } from '../office/map'
+import {
+  ALL_DESKS,
+  CEO_SPOTS,
+  COLS,
+  DESKS,
+  findPath,
+  LOUNGE_SPOTS,
+  MEETING_DY,
+  MEETING_SEATS,
+  nearestWalkable,
+  ROWS,
+  seatAt,
+  SIGNS,
+  TILE,
+  visitSpot,
+  type MeetingSeat,
+  type Point,
+  type Seat,
+} from '../office/map'
 import type { Agent, Task } from '../types'
 
 type Props = {
@@ -21,6 +39,8 @@ const SPEED = 3.5
 const VISIT_MS = 2500
 /** 소파에 놓으면 이만큼 앉아 있다가 일어난다 */
 const SOFA_MS = 10_000
+/** CEO가 일을 맡기면 이만큼 모두 회의실에 모여 앉는다 */
+const MEETING_MS = 20_000
 /** 이만큼(화면 픽셀) 움직여야 클릭이 아니라 끌기로 본다 */
 const DRAG_THRESHOLD = 4
 
@@ -56,6 +76,28 @@ export function ceoOf(agents: Agent[]) {
   return top.find((a) => /ceo/i.test(a.title)) ?? top[0] ?? null
 }
 
+/** 회의 자리. CEO는 탁자 끝 첫 자리, 나머지는 목록 순서대로. 자리보다 사람이 많으면 남는 사람은 자리가 없다 */
+function assignMeetingSeats(agents: Agent[], ceo: Agent | null) {
+  const seatOf = new Map<string, MeetingSeat>()
+  if (ceo) seatOf.set(ceo.id, MEETING_SEATS[0])
+  const rest = MEETING_SEATS.slice(ceo ? 1 : 0)
+  agents.filter((a) => a !== ceo).slice(0, rest.length).forEach((a, i) => seatOf.set(a.id, rest[i]))
+  return seatOf
+}
+
+/** CEO가 맡긴 지 MEETING_MS가 지나지 않은 하위 작업 (상위 작업 담당이 CEO이고 다른 사람에게 맡긴 것) */
+function freshCeoOrders(tasks: Task[], ceo: Agent | null, nowMs: number) {
+  if (!ceo) return []
+  const ceoTasks = new Set(tasks.filter((t) => t.assigneeId === ceo.id).map((t) => t.id))
+  return tasks.filter(
+    (t) =>
+      t.parentTaskId &&
+      ceoTasks.has(t.parentTaskId) &&
+      t.assigneeId !== ceo.id &&
+      nowMs - Date.parse(t.createdAt) < MEETING_MS,
+  )
+}
+
 /** CEO는 CEO방 책상, 나머지는 목록 순서대로 일반 책상. 값은 ALL_DESKS의 번호 */
 function assignDesks(agents: Agent[]) {
   const ceo = ceoOf(agents)
@@ -81,6 +123,8 @@ export function OfficeView({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
   const live = useRef({ agents, tasks, activities, assets, hovered })
   live.current = { agents, tasks, activities, assets, hovered }
   const sims = useRef(new Map<string, Sim>())
+  /** 회의가 끝나는 시각(performance.now 기준)과 이미 회의를 연 지시 */
+  const meeting = useRef({ until: 0, seen: new Set<string>() })
   const hitboxes = useRef<{ id: string; x: number; y: number; w: number; h: number }[]>([])
 
   useEffect(() => {
@@ -128,6 +172,15 @@ export function OfficeView({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
       // 책상보다 사람이 많으면 남는 사람은 휴게실에 있다
       const { ceo, deskOf } = assignDesks(agents)
 
+      // CEO가 새로 일을 맡기면 모두 회의실에 모인다. 막 맡긴 일만 보므로 화면을 새로 열었을 때 지난 지시로 회의하지 않는다
+      for (const order of freshCeoOrders(tasks, ceo, Date.now())) {
+        if (meeting.current.seen.has(order.id)) continue
+        meeting.current.seen.add(order.id)
+        meeting.current.until = now + MEETING_MS
+      }
+      const inMeeting = now < meeting.current.until
+      const seatOf = assignMeetingSeats(agents, ceo)
+
       // ---------- 움직임 ----------
       for (const id of sims.current.keys()) if (!activities.has(id)) sims.current.delete(id)
       for (const agent of agents) {
@@ -171,7 +224,14 @@ export function OfficeView({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
         }
 
         let goal: Point
-        if (sim.visit) {
+        const meetingSeat = inMeeting ? seatOf.get(agent.id) : undefined
+        if (meetingSeat) {
+          // 회의 중에는 하던 일(책상, 심부름, 소파)을 두고 회의 자리로 간다. 끝나면 원래대로 돌아간다
+          sim.visit = null
+          sim.sofa = null
+          sim.pinned = null
+          goal = meetingSeat
+        } else if (sim.visit) {
           goal = sim.visit.spot
           if (same(tileOf(sim), goal) && !sim.path.length) {
             sim.visit.until ??= now + VISIT_MS
@@ -215,6 +275,8 @@ export function OfficeView({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
             sim.x += (dx / dist) * move
             sim.y += (dy / dist) * move
           }
+        } else if (meetingSeat) {
+          sim.dir = meetingSeat.facing
         } else if (sim.visit) {
           sim.dir = 'up'
         }
@@ -242,13 +304,28 @@ export function OfficeView({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
         if (!sim) return
         const activity = activities.get(agent.id)!
         const deskIndex = deskOf.get(agent.id)
+        const seatInMeeting = inMeeting ? seatOf.get(agent.id) : undefined
+        const meetingSeat = seatInMeeting && !sim.path.length && same(tileOf(sim), seatInMeeting) ? seatInMeeting : null
         const seated =
-          deskIndex !== undefined && !sim.path.length && !sim.visit && same(tileOf(sim), ALL_DESKS[deskIndex].seat) && activity.kind !== 'idle'
+          !meetingSeat &&
+          deskIndex !== undefined &&
+          !sim.path.length &&
+          !sim.visit &&
+          same(tileOf(sim), ALL_DESKS[deskIndex].seat) &&
+          activity.kind !== 'idle'
         // 소파에 앉아 있으면 소파 위 자리에, 앉은 방향을 보고 그린다
         const sofa = !seated && sim.sofa && !sim.path.length && !sim.visit && same(tileOf(sim), sim.sofa) ? sim.sofa : null
         const fx = seated ? ALL_DESKS[deskIndex!].x * TILE + TILE : sofa ? sofa.fx : sim.x * TILE + TILE / 2
         // 큰 캐릭터 그림은 모니터를 가리지 않게 의자 쪽으로 조금 더 내려 앉힌다
-        const fy = seated ? sim.y * TILE + (assets.characters.length ? 15 : 10) : sofa ? sofa.fy : sim.y * TILE + 14
+        // 회의 의자: 위쪽 줄은 탁자가 다리를 가리게 조금 내리고, 아래쪽 줄은 의자 등받이가 허리 아래를 가린다
+        const meetingDy = meetingSeat ? { down: 18, up: 10, left: 13, right: 13 }[meetingSeat.facing] : 0
+        const fy = seated
+          ? sim.y * TILE + (assets.characters.length ? 15 : 10)
+          : sofa
+            ? sofa.fy
+            : meetingSeat
+              ? sim.y * TILE + meetingDy + MEETING_DY
+              : sim.y * TILE + 14
         const walking = sim.path.length > 0
         const typing = seated && (activity.kind === 'typing' || activity.kind === 'terminal' || activity.kind === 'thinking')
         const palette = paletteFor(agent.id, agent.adapter.type)
@@ -322,7 +399,8 @@ export function OfficeView({ agents, tasks, onOpenTask, onOpenAgent }: Props) {
       for (const l of labels) {
         const w = ctx.measureText(l.name).width + 8 * dpr
         const x = l.x * s
-        const y = l.y * s
+        // 맨 아래 줄(회의실 의자)에 있으면 이름표가 잘리지 않게 화면 안으로 올린다
+        const y = Math.min(l.y * s, canvas.height - 15 * dpr)
         ctx.fillStyle = l.id === hovered ? 'rgba(217,119,87,0.95)' : 'rgba(20,22,30,0.75)'
         ctx.fillRect(x - w / 2, y, w, 15 * dpr)
         ctx.fillStyle = '#fff'

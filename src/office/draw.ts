@@ -5,7 +5,26 @@
 import type { AdapterType } from '../types'
 import type { ActivityKind } from './activity'
 import type { OfficeAssets } from './assets'
-import { ALL_DESKS, COLS, FLOOR_ITEMS, inCeoRoom, isWall, PARTITION_X, ROWS, RUGS, sizeOf, TILE, WALL_DECOR, type Furniture, type Rug } from './map'
+import {
+  ALL_DESKS,
+  COLS,
+  FLOOR_ITEMS,
+  inCeoRoom,
+  inMeetingRoom,
+  inServerRoom,
+  isWall,
+  MEETING_DY,
+  MEETING_SEATS,
+  PARTITION_X,
+  ROWS,
+  RUGS,
+  sizeOf,
+  TILE,
+  WALL_DECOR,
+  type Furniture,
+  type MeetingSeat,
+  type Rug,
+} from './map'
 
 type Ctx = CanvasRenderingContext2D
 
@@ -49,6 +68,16 @@ function floorCeo(ctx: Ctx, x: number, y: number) {
   r(ctx, x + 3, y + 11, 1, 1, '#33507d')
 }
 
+/** 서버실 바닥: 들어 올릴 수 있는 회색 이중 바닥 */
+function floorServer(ctx: Ctx, x: number, y: number) {
+  r(ctx, x, y, TILE, TILE, '#5c6470')
+  r(ctx, x, y, TILE, 1, '#6c7480')
+  r(ctx, x, y, 1, TILE, '#6c7480')
+  r(ctx, x + 15, y, 1, TILE, '#4a515c')
+  r(ctx, x, y + 15, TILE, 1, '#4a515c')
+  for (const [px, py] of [[3, 3], [12, 3], [3, 12], [12, 12]]) r(ctx, x + px, y + py, 1, 1, '#454c56')
+}
+
 function wall(ctx: Ctx, x: number, y: number, row: number) {
   if (row === 0) {
     r(ctx, x, y, TILE, TILE, '#36415e')
@@ -75,7 +104,10 @@ export function drawBackground(ctx: Ctx, assets: OfficeAssets) {
         if (!override(ctx, assets, 'partition', x, y + TILE)) partition(ctx, x, y)
       } else if (inCeoRoom(tx, ty)) {
         if (!override(ctx, assets, 'floorCeo', x, y + TILE)) floorCeo(ctx, x, y)
-      } else if (tx >= PARTITION_X) {
+      } else if (inServerRoom(tx, ty)) {
+        if (!override(ctx, assets, 'floorServer', x, y + TILE)) floorServer(ctx, x, y)
+      } else if (tx >= PARTITION_X || inMeetingRoom(tx, ty)) {
+        // 회의실은 휴게실과 같은 베이지 바닥
         if (!override(ctx, assets, 'floorLounge', x, y + TILE)) floorLounge(ctx, x, y)
       } else if (!override(ctx, assets, 'floorWork', x, y + TILE)) floorWork(ctx, x, y, ty)
     }
@@ -257,6 +289,31 @@ function drawFurnitureItem(ctx: Ctx, f: Furniture, frame: number) {
       for (let i = 0; i < 14; i++) r(ctx, x + 22 + i, top + 18 - Math.floor(i / 3), 1, 1, i < 3 ? '#e8d5a8' : '#a0673a')
       return
     }
+    case 'server': {
+      // 키 큰 랙 캐비닛. 장비 칸마다 불빛이 제각각 깜빡인다
+      r(ctx, x + 1, bottom - 30, 14, 30, '#1e2229')
+      r(ctx, x + 1, bottom - 30, 14, 1, '#3a404b')
+      r(ctx, x + 2, bottom - 28, 12, 25, '#2a2f38')
+      for (let i = 0; i < 6; i++) {
+        const uy = bottom - 27 + i * 4
+        r(ctx, x + 3, uy, 10, 3, '#3a404b')
+        r(ctx, x + 3, uy + 2, 10, 1, '#252a32')
+        const on = (frame + i * 3 + f.x * 5) % 7
+        r(ctx, x + 4, uy + 1, 1, 1, on < 5 ? '#4ee07a' : '#1d5c33')
+        r(ctx, x + 6, uy + 1, 1, 1, on % 3 === 0 ? '#f5b041' : '#5c4a1d')
+        r(ctx, x + 9, uy + 1, 3, 1, '#151820')
+      }
+      r(ctx, x + 2, bottom - 3, 2, 3, '#151820')
+      r(ctx, x + 12, bottom - 3, 2, 3, '#151820')
+      return
+    }
+    case 'meetingTable': {
+      ctx.save()
+      ctx.translate(0, MEETING_DY)
+      drawMeetingTable(ctx, x, bottom, f.w, frame)
+      ctx.restore()
+      return
+    }
     case 'armchair': {
       // 두 칸 가운데에 놓인 CEO용 1인 소파 (등받이는 위쪽, 앉으면 탁자를 본다)
       const x0 = x + 7
@@ -303,6 +360,27 @@ function drawFurnitureItem(ctx: Ctx, f: Furniture, frame: number) {
       r(ctx, x + w - 5, bottom - 16, 4, 14, '#a9566a')
       for (let i = 1; i < f.w; i++) r(ctx, x + i * TILE, bottom - 9, 1, 6, '#a9566a')
       return
+    }
+  }
+}
+
+/** 위에서 내려다본 긴 탁자. 위에 노트북과 서류를 둔다 */
+function drawMeetingTable(ctx: Ctx, x: number, bottom: number, tiles: number, frame: number) {
+  const w = tiles * TILE
+  r(ctx, x + 1, bottom - 15, w - 2, 11, '#5e3c20')
+  r(ctx, x + 2, bottom - 14, w - 4, 8, '#8a5a33')
+  r(ctx, x + 2, bottom - 14, w - 4, 1, '#a46c40')
+  r(ctx, x + 3, bottom - 4, 2, 4, '#4a2e17')
+  r(ctx, x + w - 5, bottom - 4, 2, 4, '#4a2e17')
+  for (let i = 0; i < tiles; i++) {
+    const px = x + i * TILE
+    if (i % 2 === 0) {
+      r(ctx, px + 5, bottom - 13, 7, 5, '#c8ccd2')
+      r(ctx, px + 6, bottom - 12, 5, 3, frame % 4 === i % 4 ? '#7fc1f0' : '#5aa9e6')
+    } else {
+      r(ctx, px + 4, bottom - 12, 6, 4, '#f5f5f5')
+      r(ctx, px + 5, bottom - 11, 4, 1, '#b8b8b8')
+      r(ctx, px + 11, bottom - 12, 2, 3, '#f5f5f5')
     }
   }
 }
@@ -374,6 +452,31 @@ function chair(ctx: Ctx, x: number, y: number) {
   r(ctx, x + 11, y + 4, 10, 8, '#3a3f4b')
   r(ctx, x + 11, y + 4, 10, 1, '#565d6d')
   r(ctx, x + 15, y + 12, 2, 3, '#22262e')
+}
+
+/** 회의 의자. 등받이는 앉은 사람이 바라보는 쪽의 반대편에 있다 */
+function meetingChair(ctx: Ctx, seat: MeetingSeat, part: 'seat' | 'back') {
+  const x = seat.x * TILE
+  const y = seat.y * TILE + MEETING_DY
+  if (seat.facing === 'down') {
+    if (part === 'back') return
+    r(ctx, x + 3, y + 1, 10, 4, '#2c2f37')
+    r(ctx, x + 3, y + 5, 10, 6, '#3a3f4b')
+    r(ctx, x + 3, y + 5, 10, 1, '#565d6d')
+  } else if (seat.facing === 'up') {
+    // 뒷모습이 보이는 의자는 등받이를 사람보다 나중에 그려 허리 아래를 가린다
+    if (part === 'seat') r(ctx, x + 3, y + 4, 10, 6, '#3a3f4b')
+    else {
+      r(ctx, x + 3, y + 8, 10, 6, '#2c2f37')
+      r(ctx, x + 3, y + 8, 10, 1, '#565d6d')
+      r(ctx, x + 7, y + 14, 2, 2, '#22262e')
+    }
+  } else {
+    if (part === 'back') return
+    const backX = seat.facing === 'right' ? x + 2 : x + 11
+    r(ctx, x + 3, y + 6, 10, 6, '#3a3f4b')
+    r(ctx, backX, y + 1, 3, 11, '#2c2f37')
+  }
 }
 
 // ---------- 캐릭터 ----------
@@ -537,5 +640,9 @@ export function sceneItems(assets: OfficeAssets, screenOn: (deskIndex: number) =
     // 의자는 앉은 사람보다 먼저 그린다
     items.push({ baseY: d.seat.y * TILE + 1, draw: (ctx) => override(ctx, assets, 'chair', x + 8, (d.seat.y + 1) * TILE) || chair(ctx, x, d.seat.y * TILE) })
   })
+  for (const seat of MEETING_SEATS) {
+    items.push({ baseY: seat.y * TILE, draw: (ctx) => meetingChair(ctx, seat, 'seat') })
+    items.push({ baseY: (seat.y + 1) * TILE + 2, draw: (ctx) => meetingChair(ctx, seat, 'back') })
+  }
   return items
 }

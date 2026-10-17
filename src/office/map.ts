@@ -1,4 +1,7 @@
-/** 오피스 맵. 칸(16px) 단위 좌표를 쓴다. 왼쪽은 업무 공간, 오른쪽은 휴게실, 오른쪽 위 작은 방은 CEO방 */
+/**
+ * 오피스 맵. 칸(16px) 단위 좌표를 쓴다. 왼쪽 위는 업무 공간, 왼쪽 아래는 서버실과 회의실,
+ * 오른쪽은 휴게실, 오른쪽 위 작은 방은 CEO방
+ */
 
 export const TILE = 16
 export const COLS = 26
@@ -14,9 +17,17 @@ export type Point = { x: number; y: number }
 export type Desk = { x: number; y: number; seat: Point }
 
 const DESK_XS = [1, 4, 7, 10]
-const DESK_YS = [4, 8, 12]
+const DESK_YS = [4, 8]
 
 export const DESKS: Desk[] = DESK_YS.flatMap((y) => DESK_XS.map((x) => ({ x, y, seat: { x, y: y + 1 } })))
+
+/** 업무 공간 아래의 방들을 나누는 가로 벽의 y. 문은 ROOM_DOORS 칸에 있다 */
+const ROOM_WALL_Y = 11
+/** 서버실(왼쪽)과 회의실(오른쪽)을 나누는 세로 벽의 x */
+const ROOM_SPLIT_X = 4
+const ROOM_DOORS = [2, 11]
+export const SERVER_ROOM = { x: 0, y: ROOM_WALL_Y + 1, right: ROOM_SPLIT_X - 1, bottom: ROWS - 1 }
+export const MEETING_ROOM = { x: ROOM_SPLIT_X + 1, y: ROOM_WALL_Y + 1, right: PARTITION_X - 1, bottom: ROWS - 1 }
 
 /** CEO방 안쪽 (벽 제외). 왼쪽 벽은 x-1, 아래 벽은 bottom+1 줄에 있고 문은 아래 벽의 DOOR_X */
 export const CEO_ROOM = { x: 21, y: 2, right: 25, bottom: 6 }
@@ -33,6 +44,8 @@ export const SIGNS: Sign[] = [
   // 업무 공간 문 바로 위 칸막이 벽
   { x: PARTITION_X, y: DOOR_ROWS[0] - 1, w: 1, text: '개발팀', color: '#ffffff', bg: '#2e6da4' },
   { x: CEO_DOOR_X - 2, y: CEO_ROOM.bottom + 1, w: 2, text: 'CEO', color: '#3a2a0a', bg: '#e8c65a' },
+  { x: 0, y: ROOM_WALL_Y, w: 2, text: '서버실', color: '#d6f5e3', bg: '#1f3b2d' },
+  { x: 6, y: ROOM_WALL_Y, w: 3, text: '회의실', color: '#ffffff', bg: '#5b4a8a' },
   { x: CEO_DOOR_X + 1, y: CEO_ROOM.bottom + 1, w: 2, text: '안주영 출입금지', color: '#ffffff', bg: '#c0392b' },
 ]
 
@@ -48,6 +61,10 @@ export type Furniture =
   /** 안마의자. 앉으면 몸이 떨린다 */
   | { kind: 'massage'; x: number; y: number; w: 1 }
   | { kind: 'pool'; x: number; y: number; w: 3; h: 2 }
+  /** 서버랙. 불빛이 깜빡인다 */
+  | { kind: 'server'; x: number; y: number; w: 1 }
+  /** 회의 탁자. 둘레에 MEETING_SEATS 의자가 놓인다 */
+  | { kind: 'meetingTable'; x: number; y: number; w: number; h?: number }
 
 export const sizeOf = (f: Furniture) => ({ w: 'w' in f ? f.w : 1, h: 'h' in f ? (f.h ?? 1) : 1 })
 
@@ -69,6 +86,12 @@ export const RUGS: Rug[] = [{ x: 14, y: 3, w: 3, text: 'WELCOME' }]
 export const FLOOR_ITEMS: Furniture[] = [
   { kind: 'plant', x: 0, y: 2, w: 1 },
   { kind: 'boxes', x: 12, y: 2 },
+  // 서버실: 아래쪽 벽에 붙은 서버랙
+  { kind: 'server', x: 0, y: 14, w: 1 },
+  { kind: 'server', x: 1, y: 14, w: 1 },
+  { kind: 'server', x: 3, y: 14, w: 1 },
+  // 회의실: 가운데 긴 탁자
+  { kind: 'meetingTable', x: 7, y: 14, w: 4 },
   { kind: 'plant', x: 12, y: 15, w: 1 },
   // 휴게실: 왼쪽 위 카페, 가운데 양옆 소파와 탁자
   { kind: 'cafe', x: 14, y: 2, w: 3 },
@@ -81,8 +104,8 @@ export const FLOOR_ITEMS: Furniture[] = [
   { kind: 'sofaSide', x: 19, y: 10, w: 1, h: 2, facing: 'left' },
   { kind: 'plant', x: 14, y: 15, w: 1 },
   // 휴게실 오른쪽: 안마의자 두 개, 당구대
-  { kind: 'massage', x: 24, y: 9, w: 1 },
-  { kind: 'massage', x: 25, y: 9, w: 1 },
+  { kind: 'massage', x: 24, y: 11, w: 1 },
+  { kind: 'massage', x: 25, y: 11, w: 1 },
   { kind: 'pool', x: 21, y: 13, w: 3, h: 2 },
   // CEO방
   { kind: 'plant', x: 21, y: 2, w: 1 },
@@ -111,6 +134,31 @@ export const SEATS: Seat[] = FLOOR_ITEMS.flatMap((f): Seat[] => {
   return []
 })
 
+/**
+ * 회의 의자. 탁자 위아래로 넷씩, 양 끝에 하나씩. 첫 자리(왼쪽 끝)는 회의를 여는 CEO 자리.
+ * 이름표가 겹치지 않게 위아래 줄을 번갈아 한 칸씩 띄워 채운다
+ */
+/** 회의실은 4줄인데 의자, 탁자, 의자는 3줄이라 위아래 여백이 같도록 회의 가구와 앉은 사람을 반 칸 위로 그린다 */
+export const MEETING_DY = -TILE / 2
+
+export type MeetingSeat = { x: number; y: number; facing: 'down' | 'up' | 'left' | 'right' }
+
+const TOP = (x: number): MeetingSeat => ({ x, y: 13, facing: 'down' })
+const BOTTOM = (x: number): MeetingSeat => ({ x, y: 15, facing: 'up' })
+
+export const MEETING_SEATS: MeetingSeat[] = [
+  { x: 6, y: 14, facing: 'right' },
+  TOP(7),
+  BOTTOM(8),
+  TOP(9),
+  BOTTOM(10),
+  { x: 11, y: 14, facing: 'left' },
+  TOP(8),
+  BOTTOM(7),
+  TOP(10),
+  BOTTOM(9),
+]
+
 /** 그 칸에 놓으면 앉는 자리. 1인용 소파는 두 칸 어디에 놓아도 앉는다 */
 export function seatAt(p: Point): Seat | undefined {
   return SEATS.find((s) => s.y === p.y && (s.x === p.x || (isArmchairTile(s, p))))
@@ -123,13 +171,21 @@ const ceoWall = (x: number, y: number) =>
   (x === CEO_ROOM.x - 1 && y >= CEO_ROOM.y && y <= CEO_ROOM.bottom + 1) ||
   (y === CEO_ROOM.bottom + 1 && x >= CEO_ROOM.x && x <= CEO_ROOM.right && x !== CEO_DOOR_X)
 
-export const isWall = (x: number, y: number) => y < 2 || (x === PARTITION_X && !DOOR_ROWS.includes(y)) || ceoWall(x, y)
+const roomWall = (x: number, y: number) =>
+  (y === ROOM_WALL_Y && x < PARTITION_X && !ROOM_DOORS.includes(x)) || (x === ROOM_SPLIT_X && y > ROOM_WALL_Y)
+
+export const isWall = (x: number, y: number) =>
+  y < 2 || (x === PARTITION_X && !DOOR_ROWS.includes(y)) || ceoWall(x, y) || roomWall(x, y)
+export const inServerRoom = (x: number, y: number) => x >= SERVER_ROOM.x && x <= SERVER_ROOM.right && y >= SERVER_ROOM.y
+export const inMeetingRoom = (x: number, y: number) => x >= MEETING_ROOM.x && x <= MEETING_ROOM.right && y >= MEETING_ROOM.y
 export const inLounge = (x: number, y: number) => x > PARTITION_X && !inCeoRoom(x, y) && !isWall(x, y)
 
 const blocked = new Set<string>()
 const key = (x: number, y: number) => `${x},${y}`
-// 맨 아래 줄은 이름표가 화면 밖으로 잘리므로 걸어 다니지 않는다
-for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) if (isWall(x, y) || y === ROWS - 1) blocked.add(key(x, y))
+// 맨 아래 줄은 이름표가 화면 밖으로 잘리므로 걸어 다니지 않는다. 회의실은 맨 아래 줄 의자까지 가야 해서 예외
+for (let y = 0; y < ROWS; y++) {
+  for (let x = 0; x < COLS; x++) if (isWall(x, y) || (y === ROWS - 1 && !inMeetingRoom(x, y))) blocked.add(key(x, y))
+}
 for (const d of ALL_DESKS) {
   blocked.add(key(d.x, d.y))
   blocked.add(key(d.x + 1, d.y))
