@@ -109,7 +109,7 @@ export function TaskDetail({ task, tasks, agents, projects, blockedReason, runEr
         </div>
         <Field label="설명">
           <textarea
-            rows={6}
+            rows={12}
             value={task.description}
             placeholder="에이전트가 할 일을 자세히 적어주세요. 완료 기준이 있으면 함께 적으면 좋습니다."
             onChange={(e) => onChange({ description: e.target.value })}

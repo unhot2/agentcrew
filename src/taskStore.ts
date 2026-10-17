@@ -30,6 +30,19 @@ export function taskKey(task: Pick<Task, 'number'>) {
   return `${taskPrefix}-${task.number}`
 }
 
+/** 제목 앞에 붙은 작업 번호를 대괄호로 묶는다. "AC-10 AC-9: 제목" → "[AC-10] [AC-9] 제목" */
+export function bracketTaskKeys(title: string) {
+  const prefix = taskPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const lead = new RegExp(`^\\s*\\[?(${prefix}-\\d+)\\]?\\s*[:：\\-–—]?\\s*`, 'i')
+  const keys: string[] = []
+  let rest = title
+  for (let m = rest.match(lead); m; m = rest.match(lead)) {
+    keys.push(m[1].toUpperCase())
+    rest = rest.slice(m[0].length)
+  }
+  return keys.length ? `${keys.map((k) => `[${k}]`).join(' ')} ${rest}`.trim() : title
+}
+
 export function createTask(tasks: Task[]): Task {
   const now = new Date().toISOString()
   return {
