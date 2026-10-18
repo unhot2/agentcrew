@@ -15,7 +15,12 @@ type Props = {
 /** 사람이 확인해야 할 것들. 처리하면 목록에서 사라진다 */
 export function inboxItems(data: ServerState) {
   const approvals = data.approvals.filter((a) => a.status === 'pending')
-  const reviews = data.tasks.filter((t) => t.status === 'in_review')
+  // 하위 작업은 상위 담당 에이전트가 검토하므로, 상위 작업이 끝나기 전에는 올리지 않는다
+  const parentOpen = (t: Task) => {
+    const parent = data.tasks.find((p) => p.id === t.parentTaskId)
+    return !!parent && parent.status !== 'done' && parent.status !== 'cancelled'
+  }
+  const reviews = data.tasks.filter((t) => t.status === 'in_review' && !parentOpen(t))
   const failures = data.tasks.filter((t) => {
     const last = t.runs[t.runs.length - 1]
     return last?.status === 'failed' && t.status !== 'done' && t.status !== 'cancelled'

@@ -156,6 +156,8 @@ export function putTask(id: string, body: Task) {
     const key = taskKey(existing)
     if (before.status !== existing.status) {
       log('task', `${key} 상태를 ${existing.status}(으)로 바꿨습니다.`, { taskId: id })
+      // 받은편지함에는 맨 위 작업만 올라오므로, 그 작업을 완료하면 검토 대기로 남은 하위 작업도 함께 완료한다
+      if (existing.status === 'done') completeReviewedSubtasks(existing)
       if (existing.status === 'done' || existing.status === 'cancelled') continueParentOf(existing)
     }
     if (before.assigneeId !== existing.assigneeId) {
@@ -169,6 +171,16 @@ export function putTask(id: string, body: Task) {
   }
   persist()
   return state.tasks.find((t) => t.id === id)!
+}
+
+/** 작업 아래에서 검토 대기로 끝난 하위 작업(그 아래까지)을 완료로 바꾼다 */
+function completeReviewedSubtasks(task: Task) {
+  for (const child of state.tasks.filter((t) => t.parentTaskId === task.id)) {
+    if (child.status !== 'in_review') continue
+    child.status = 'done'
+    child.updatedAt = now()
+    completeReviewedSubtasks(child)
+  }
 }
 
 export function deleteTask(id: string) {
@@ -517,10 +529,14 @@ function subtasksOf(task: Task) {
   return state.tasks.filter((t) => t.parentTaskId === task.id)
 }
 
-/** 하위 작업이 끝났는지. 실행을 마쳐 검토 대기로 올라온 것도 끝난 것으로 본다 (검증은 상위 담당자가 한다) */
+/**
+ * 하위 작업이 끝났는지. 실행을 마쳐 검토 대기로 올라온 것도 끝난 것으로 본다 (검증은 상위 담당자가 한다).
+ * 사람의 승인을 기다리는 작업은 승인 뒤에 이어서 진행하므로 아직 끝나지 않은 것으로 본다
+ */
 function subtaskFinished(task: Task) {
   const settled = task.status === 'done' || task.status === 'cancelled' || task.status === 'in_review'
-  return settled && !task.runs.some((r) => r.status === 'running')
+  const awaitingApproval = state.approvals.some((a) => a.taskId === task.id && a.status === 'pending')
+  return settled && !awaitingApproval && !task.runs.some((r) => r.status === 'running')
 }
 
 /** 하위 작업을 맡겨 두고 결과를 기다리는 작업인지 */
