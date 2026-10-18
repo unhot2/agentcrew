@@ -6,8 +6,6 @@ import { ceoOf } from './OfficeView'
 
 type Props = {
   task: Task
-  /** 수신자를 찾기 위한 상위 작업 */
-  parent?: Task
   children: Task[]
   agents: Agent[]
   onSign: (signedAt: string | null) => void
@@ -37,14 +35,14 @@ function reportText(run: TaskRun) {
 
 const dateText = (iso: string) => new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
 
-export function TaskReport({ task, parent, children, agents, onSign }: Props) {
+export function TaskReport({ task, children, agents, onSign }: Props) {
   const run = findReportRun(task, children)
   if (!run) return null
   const reporter = agents.find((a) => a.id === run.agentId)
   const nameOf = (id: string | null) => agents.find((a) => a.id === id)?.name ?? '담당 없음'
   const ceo = ceoOf(agents)
-  // 맡긴 사람에게 보고한다. 대표가 직접 지시한 작업이면 대표에게
-  const receiver = parent?.assigneeId ? nameOf(parent.assigneeId) : null
+  // 보고서는 대표 바로 아래 에이전트가 대표에게만 올린다. 대표 본인이나 더 아래 에이전트의 정리는 보고서로 보지 않는다
+  if (!ceo || !reporter || reporter.reportsTo !== ceo.id) return null
   const signedAt = task.reportSignedAt
   const text = reportText(run)
 
@@ -72,7 +70,7 @@ export function TaskReport({ task, parent, children, agents, onSign }: Props) {
               <tr>
                 <td>
                   <span className="stamp">
-                    <span className="stamp-name">{reporter?.name ?? '담당'}</span>
+                    <span className="stamp-name">{reporter.name}</span>
                     <span className="stamp-date">{dateText(run.startedAt)}</span>
                   </span>
                 </td>
@@ -108,11 +106,11 @@ export function TaskReport({ task, parent, children, agents, onSign }: Props) {
             <tr>
               <th>보고자</th>
               <td>
-                {reporter?.name ?? '삭제된 에이전트'}
-                {reporter?.title && <span className="muted"> · {reporter.title}</span>}
+                {reporter.name}
+                {reporter.title && <span className="muted"> · {reporter.title}</span>}
               </td>
               <th>수신</th>
-              <td>{receiver ?? `대표${ceo ? ` ${ceo.name}` : ''}`}</td>
+              <td>대표 {ceo.name}</td>
             </tr>
             <tr>
               <th>제목</th>
@@ -152,7 +150,7 @@ export function TaskReport({ task, parent, children, agents, onSign }: Props) {
           <p>위와 같이 보고합니다.</p>
           <p>{dateText(run.startedAt)}</p>
           <p>
-            보고자 <strong>{reporter?.name ?? '담당'}</strong> (인)
+            보고자 <strong>{reporter.name}</strong> (인)
           </p>
         </footer>
       </article>

@@ -137,7 +137,6 @@ export function TaskDetail({ task, tasks, agents, projects, blockedReason, runEr
 
       <TaskReport
         task={task}
-        parent={parent}
         children={children}
         agents={agents}
         // 결재하면 작업을 완료로, 결재를 취소하면 다시 검토 대기로 돌린다
