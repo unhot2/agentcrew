@@ -53,7 +53,7 @@ export function startClaudeCode(agent: Agent, ctx: AdapterContext): AdapterHandl
   const child = spawn(CLAUDE_BIN, args, { cwd: agent.workdir, windowsHide: true, env: { ...process.env, ...ctx.env } })
   child.stdin.end(ctx.prompt)
   onLines(child, (line) => {
-    for (const e of parseLine(line)) ctx.emit(e)
+    for (const e of parseLine(line, ctx.resumeBaseCostUsd ?? 0)) ctx.emit(e)
   })
   child.stderr.setEncoding('utf8')
   child.stderr.on('data', (chunk: string) => {
@@ -72,7 +72,7 @@ export function startClaudeCode(agent: Agent, ctx: AdapterContext): AdapterHandl
 const FILE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 
 /** stream-json 한 줄을 화면용 이벤트로 바꾼다. JSON이 아닌 줄(경고 등)은 그대로 로그로 남긴다 */
-function parseLine(line: string): RunEvent[] {
+function parseLine(line: string, baseCostUsd: number): RunEvent[] {
   let msg: any
   try {
     msg = JSON.parse(line)
@@ -113,13 +113,16 @@ function parseLine(line: string): RunEvent[] {
   }
 
   if (msg.type === 'result') {
+    // --resume로 이어서 실행하면 total_cost_usd가 세션 전체 누적이라 앞 실행까지의 비용을 빼야 이번 실행 비용이 된다
+    const sessionCostUsd = Number(msg.total_cost_usd) || 0
     return [
       {
         kind: 'result',
         isError: !!msg.is_error,
         text: typeof msg.result === 'string' ? msg.result : '',
-        costUsd: Number(msg.total_cost_usd) || 0,
+        costUsd: Math.max(0, sessionCostUsd - baseCostUsd),
         durationMs: Number(msg.duration_ms) || 0,
+        sessionCostUsd,
       },
     ]
   }

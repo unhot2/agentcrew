@@ -26,6 +26,8 @@ export type AdapterContext = {
   agentTools: AgentToolsContext | null
   /** 이어서 실행할 Claude Code 세션 (승인 후 이어서 진행할 때) */
   resumeSessionId?: string
+  /** 이어서 실행할 세션이 앞 실행까지 쓴 누적 비용. Claude Code는 세션 전체 누적 비용을 알려 주므로 이 값을 뺀다 */
+  resumeBaseCostUsd?: number
   /** 이 실행의 id (로컬 모델이 에이전트 도구를 직접 부를 때 쓴다) */
   runId: string
   emit: (e: RunEvent) => void

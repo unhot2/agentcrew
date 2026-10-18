@@ -377,6 +377,17 @@ function lastSessionId(task: Task, agentId: string) {
   return undefined
 }
 
+/** 이 세션의 마지막 실행이 알려 준 누적 비용. 예전 기록은 costUsd에 누적 비용이 그대로 들어 있다 */
+function sessionCostSoFar(task: Task, sessionId: string) {
+  for (const run of [...task.runs].reverse()) {
+    const init = run.events.find((e) => e.kind === 'init')
+    if (!init || init.kind !== 'init' || init.sessionId !== sessionId) continue
+    const result = [...run.events].reverse().find((e) => e.kind === 'result')
+    if (result && result.kind === 'result') return result.sessionCostUsd ?? result.costUsd
+  }
+  return 0
+}
+
 /**
  * 작업을 담당 에이전트로 실행하고, 실행 로그, 비용, 결과물을 작업과 에이전트에 기록한다.
  * followUp을 주면 앞 실행에 이어서 진행한다 (Claude Code는 같은 세션을 잇고, 다른 어댑터는 앞 결과를 함께 넘긴다)
@@ -400,6 +411,7 @@ export function runTask(taskId: string, source: RunSource = 'manual', followUp?:
   const delegator = state.agents.find((a) => a.id === parent?.assigneeId)?.name
   const basePrompt = taskPrompt({ ...task, title }, { project, goal, parent, delegator })
   const resumeSessionId = followUp && agent.adapter.type === 'claude-code' ? lastSessionId(task, agent.id) : undefined
+  const resumeBaseCostUsd = resumeSessionId ? sessionCostSoFar(task, resumeSessionId) : undefined
   const previous = followUp && !resumeSessionId ? lastResult(task, 3000) : ''
   const prompt = !followUp
     ? basePrompt
@@ -432,8 +444,9 @@ export function runTask(taskId: string, source: RunSource = 'manual', followUp?:
       }
     }
     if (e.kind === 'result') {
+      // 한 실행에서 결과가 여러 번 오면 마지막 값만 남기고, 에이전트 사용액에는 늘어난 만큼만 더한다
+      if (owner) owner.spentThisMonth += e.costUsd - taskRun.costUsd
       taskRun.costUsd = e.costUsd
-      if (owner) owner.spentThisMonth += e.costUsd
     }
     if (e.kind === 'exit') {
       if (agentTools) revokeGrant(agentTools.token)
@@ -479,7 +492,13 @@ export function runTask(taskId: string, source: RunSource = 'manual', followUp?:
   const guide = !team ? null : canDelegate ? 'allowed' : 'forbidden'
   const systemPrompt = systemPromptFor(agent, guide, !!agentTools)
   // 이벤트는 모두 비동기로 오므로 id를 바로 채워 넣어도 순서가 꼬이지 않는다
-  const run = startRun(runner, prompt, onEvent, { systemPrompt, env: connectorEnv(), agentTools, resumeSessionId })
+  const run = startRun(runner, prompt, onEvent, {
+    systemPrompt,
+    env: connectorEnv(),
+    agentTools,
+    resumeSessionId,
+    resumeBaseCostUsd,
+  })
   taskRun.id = run.id
   task.runs.push(taskRun)
   task.status = 'in_progress'

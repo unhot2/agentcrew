@@ -7,7 +7,16 @@ export type RunEvent =
   /** path: 파일을 쓰거나 고친 도구일 때 그 파일 경로 (결과물로 기록) */
   | { kind: 'tool'; name: string; summary: string; path?: string }
   | { kind: 'tool_result'; isError: boolean; preview: string }
-  | { kind: 'result'; isError: boolean; text: string; costUsd: number; durationMs: number }
+  | {
+      kind: 'result'
+      isError: boolean
+      text: string
+      /** 이번 실행의 비용 */
+      costUsd: number
+      durationMs: number
+      /** 이어서 실행한 Claude Code 세션의 앞 실행까지 포함한 누적 비용 */
+      sessionCostUsd?: number
+    }
   | { kind: 'stderr'; text: string }
   | { kind: 'error'; text: string }
   | { kind: 'exit'; status: RunStatus; code: number | null }
