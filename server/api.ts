@@ -470,8 +470,9 @@ export function runTask(taskId: string, source: RunSource = 'manual', followUp?:
         const children = subtasksOf(current)
         if (children.some((c) => !subtaskFinished(c))) {
           log('task', `${key}은 맡긴 하위 작업이 끝나면 이어서 진행합니다.`, { taskId, agentId: agent.id })
-        } else if (children.some((c) => c.updatedAt >= taskRun.startedAt)) {
-          // 이 실행 중에 맡긴 하위 작업이 벌써 끝났으면 바로 이어서 진행한다
+        } else if (children.some((c) => c.createdAt >= taskRun.startedAt)) {
+          // 이 실행 중에 맡긴 하위 작업이 벌써 끝났으면 바로 이어서 진행한다.
+          // 예전에 맡긴 작업은 결과를 이미 받았으므로, 그 작업의 상태만 바뀐 것으로는 다시 실행하지 않는다
           resumeNow = true
         } else {
           current.status = 'in_review'
