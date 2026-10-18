@@ -565,6 +565,7 @@ input.task-title:hover { border-color: var(--border); }
 .badge.approval-pending { background: var(--warning-bg); color: var(--warning); }
 .badge.approval-approved { background: var(--success-bg); color: var(--success); }
 .badge.approval-rejected { background: var(--surface-muted); color: var(--text-secondary); }
+.approval-agent { flex-shrink: 0; font-weight: 600; white-space: nowrap; }
 .approval-item { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
 .approval-item:last-child { border-bottom: none; }
 .approval-item .inbox-row { border-bottom: none; }

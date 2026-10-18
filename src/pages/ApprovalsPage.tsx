@@ -33,11 +33,12 @@ export function ApprovalsPage({ data, onOpenTask, onDecide }: Props) {
         <div className="inbox-row">
           <button className="row-link" onClick={() => task && onOpenTask(task.id)}>
             <span className={`badge approval-${a.status}`}>{STATUS_TEXT[a.status]}</span>
+            <span className="approval-agent">{agent?.name ?? '삭제된 에이전트'}</span>
             <span className="row-link-title">
               {task ? `${taskKey(task)} ${task.title}` : '삭제된 작업'}
               <span className="muted">
                 {' '}
-                · {agent?.name ?? '삭제된 에이전트'} · {SOURCE_TEXT[a.source]} · {a.reason}
+                · {SOURCE_TEXT[a.source]} · {a.reason}
               </span>
             </span>
             <span className="muted">{new Date(a.decidedAt ?? a.requestedAt).toLocaleString('ko-KR')}</span>
